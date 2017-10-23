@@ -187,7 +187,10 @@ export class WorkItemQuickAddComponent implements OnInit, OnDestroy, OnChanges, 
       event.preventDefault();
     this.logger.log('Selected type ' + type.attributes.name + ' for quick add.');
     this.selectedType = type;
+    var wiTitle = this.workItem.attributes['system.title'];
     this.createWorkItemObj();
+    if (wiTitle)
+      this.workItem.attributes['system.title'] = wiTitle;
   }
 
   createLinkObject(workItem: WorkItem, childWI: WorkItem, linkId: string) : void {
@@ -319,7 +322,7 @@ export class WorkItemQuickAddComponent implements OnInit, OnDestroy, OnChanges, 
       this.validTitle = false;
       this.descHeight = this.initialDescHeight ? this.initialDescHeight : 'inherit';
     } else {
-      this.createWorkItemObj();
+      this.createWorkItemObj(); 
     }
   }
 
