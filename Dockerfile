@@ -20,7 +20,7 @@ RUN set -ex \
   done
 
 #ENV NPM_CONFIG_LOGLEVEL info
-ENV NODE_VERSION 6.9.2
+ENV NODE_VERSION 8.3.0
 
 RUN yum -y update && \
     yum install -y bzip2 fontconfig tar java-1.8.0-openjdk nmap-ncat psmisc gtk3 git \
@@ -62,11 +62,16 @@ ENV WORKSPACE=$HOME/fabric8-planner
 RUN mkdir $WORKSPACE
 
 COPY . $WORKSPACE
-RUN chown -R ${FABRIC8_USER_NAME}:${FABRIC8_USER_NAME} $HOME/*
 
-USER ${FABRIC8_USER_NAME}
 WORKDIR $WORKSPACE/
 
-VOLUME /dist
+RUN npm install \
+ && npm run build \
+ && cd runtime \
+ && npm link ../dist \
+ && npm install
 
-ENTRYPOINT ["/home/fabric8/fabric8-planner/runtime/tests/docker-entrypoint.sh"]
+VOLUME /dist
+EXPOSE 8080
+
+CMD cd /home/fabric8/fabric8-planner/runtime ; npm start

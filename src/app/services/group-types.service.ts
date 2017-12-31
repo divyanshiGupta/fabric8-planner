@@ -25,9 +25,10 @@ export class GroupTypesService {
   public groupTypes: GroupTypesModel[] = [];
   private headers = new Headers({'Content-Type': 'application/json'});
   private _currentSpace;
-  private selectedGroupType: GroupTypesModel;
+  private selectedGroupType: any;
   public groupTypeSelected: Subject<string[]> = new Subject();
   public workItemSelected: Subject<string[]> = new Subject();
+  public groupName: string = '';
 
   constructor(
     private logger: Logger,
@@ -76,9 +77,15 @@ export class GroupTypesService {
     }
   }
 
-  setCurrentGroupType(groupType) {
+  setCurrentGroupType(groupType, groupName: string = '') {
+    this.selectedGroupType = groupType;
+    this.groupName = groupName;
     //emit observable. Listener on planner backlog view
     this.groupTypeSelected.next(groupType);
+  }
+
+  getCurrentGroupType(): GroupTypesModel {
+    return this.selectedGroupType;
   }
 
   getAllowedChildWits(workItem: WorkItem) {
@@ -106,48 +113,77 @@ export class GroupTypesService {
     }
   }
 
+  findGroupConext(collection) {
+    //check collection against wit_collection
+    let matchingGroup = this.groupTypes.find((gt, index) => {
+      if(gt.group === 'portfolio' && gt.level[1] === 0) {
+        //concat both portfolio
+        let arr = gt.wit_collection.concat(this.groupTypes[index + 1].wit_collection)
+        return arr.sort().toString() === collection.sort().toString();
+      } else {
+        return gt.wit_collection.sort().toString() === collection.sort().toString();
+      }
+    });
+    this.selectedGroupType = matchingGroup.wit_collection;
+  }
+
   mockData(): Array<GroupTypesModel> {
     //Map the json blob to what the UI needs
     this.groupTypeResponse = {
       'id':'f3423d58-ad28-427b-abf1-930afbb670c0',
       'type':'typehierarchies',
-      'attributes':
-      {
-        'hierarchy':[
+      "attributes": {
+        "hierarchy": [
           {
-            'level':[0, 0],
-            'group':'portfolio',
-            'name':'Portfolio',
-            'wit_collection':[
-              '71171e90-6d35-498f-a6a7-2083b5267c18',
-              'ee7ca005-f81d-4eea-9b9b-1965df0988d0',
-              '6d603ab4-7c5e-4c5f-bba8-a3ba9d370985'
+            "group": "portfolio",
+            "icon": "fa fa-suitcase",
+            "level": [
+              0,
+              0
+            ],
+            "name": "Portfolio",
+            "wit_collection": [
+              "71171e90-6d35-498f-a6a7-2083b5267c18",
+              "ee7ca005-f81d-4eea-9b9b-1965df0988d0",
+              "6d603ab4-7c5e-4c5f-bba8-a3ba9d370985"
             ]
           },
           {
-            'level':[0, 1],
-            'group':'portfolio',
-            'name':'Portfolio',
-            'wit_collection':[
-              'b9a71831-c803-4f66-8774-4193fffd1311',
-              '3194ab60-855b-4155-9005-9dce4a05f1eb'
+            "group": "portfolio",
+            "icon": "fa fa-suitcase",
+            "level": [
+              0,
+              1
+            ],
+            "name": "Portfolio",
+            "wit_collection": [
+              "b9a71831-c803-4f66-8774-4193fffd1311",
+              "3194ab60-855b-4155-9005-9dce4a05f1eb"
             ]
           },
           {
-            'level':[1, 0],
-            'group':'requirements',
-            'name':'Requirements',
-            'wit_collection':[
-              '0a24d3c2-e0a6-4686-8051-ec0ea1915a28',
-              '26787039-b68f-4e28-8814-c2f93be1ef4e'
+            "group": "requirements",
+            "icon": "fa fa-list-ul",
+            "level": [
+              1,
+              0
+            ],
+            "name": "Requirements",
+            "wit_collection": [
+              "0a24d3c2-e0a6-4686-8051-ec0ea1915a28",
+              "26787039-b68f-4e28-8814-c2f93be1ef4e"
             ]
           },
           {
-            'level': [2,0],
-            'group': 'execution',
-            'name': 'Iterations',
-            'wit_collection':[
-              'bbf35418-04b6-426c-a60b-7f80beb0b624'
+            "group": "execution",
+            "icon": "fa fa-repeat",
+            "level": [
+              2,
+              0
+            ],
+            "name": "Iterations",
+            "wit_collection": [
+              "bbf35418-04b6-426c-a60b-7f80beb0b624"
             ]
           }
         ]

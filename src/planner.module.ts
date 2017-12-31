@@ -3,8 +3,33 @@ import { NgModule } from '@angular/core';
 import { PlannerBoardModule } from './app/components/planner-board/planner-board.module';
 import { PlannerListModule } from './app/components/planner-list/planner-list.module';
 
+import { StoreModule } from '@ngrx/store';
+import { EffectsModule } from '@ngrx/effects';
+import { AppState } from './app/states/app.state';
+import { IterationState } from './app/states/iteration.state';
+import { iterationReducer } from './app/reducers/iteration.reducer';
+import { LabelReducer } from './app/reducers/label.reducer';
+import { AreaReducer } from './app/reducers/area.reducer';
+import { CollaboratorReducer } from './app/reducers/collaborator.reducer';
+import { IterationEffects } from './app/effects/iteration.effects';
+import { LabelEffects } from './app/effects/label.effects';
+import { AreaEffects } from './app/effects/area.effects';
+import { CollaboratorEffects } from './app/effects/collaborator.effects';
+
+
 @NgModule({
-  imports: [
+  imports: [StoreModule.forRoot({
+    iterations : iterationReducer,
+    labels: LabelReducer,
+    areas: AreaReducer,
+    collaborator: CollaboratorReducer
+  }),
+    EffectsModule.forRoot([
+      IterationEffects,
+      LabelEffects,
+      AreaEffects,
+      CollaboratorEffects
+    ])
   ],
   declarations: [
   ],

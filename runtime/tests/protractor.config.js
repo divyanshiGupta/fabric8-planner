@@ -1,3 +1,5 @@
+let SpecReporter = require('jasmine-spec-reporter').SpecReporter;
+
 exports.config = {
     useAllAngular2AppRoots: true,
     getPageTimeout: 30000,
@@ -13,14 +15,16 @@ exports.config = {
         isVerbose: true,
         showColors: true,
         includeStackTrace: true,
-        defaultTimeoutInterval: 60000
+        defaultTimeoutInterval: 60000,
+        print: function () {
+        }
     },
 
     troubleshoot: true,
 
     capabilities: {
       'browserName': 'chrome',
-      'maxInstances': 2,
+//      'maxInstances': 2,
       'shardTestFiles': true,
       'loggingPrefs': {
       'driver': 'WARNING',
@@ -28,7 +32,20 @@ exports.config = {
       'browser': 'INFO'
       },
       'chromeOptions': {
-      'args': [ '--no-sandbox', '--window-workspace=1']
+//      'args': [ '--no-sandbox', '--window-workspace=1']
+       'args': [ '--no-sandbox']
       }
+    },
+
+    onPrepare: function () {
+      jasmine.getEnv().addReporter(new SpecReporter({
+        spec: {
+          displayStacktrace: true,
+          displayDuration: true,
+        },
+        summary: {
+          displayDuration: true
+        }
+      }));
     }
 };

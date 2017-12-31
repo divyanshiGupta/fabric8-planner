@@ -1,3 +1,4 @@
+import { EffectsModule } from '@ngrx/effects';
 import './rxjs-extensions';
 
 import { ModuleWithProviders, NgModule } from '@angular/core';
@@ -9,7 +10,7 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 // FIXME: do we really need to have this modules on top-level?
 import { BsDropdownConfig, BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { TooltipConfig, TooltipModule } from 'ngx-bootstrap/tooltip';
-import { TabsModule } from 'ng2-bootstrap';
+import { TabsModule } from 'ngx-bootstrap';
 import { TruncateModule } from 'ng2-truncate';
 
 import { Broadcaster, Logger, Notifications } from 'ngx-base';
@@ -39,6 +40,11 @@ import { LoginService } from './services/login.service';
 // App components
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './app-routing.module';
+
+import {
+  StoreModule
+} from '@ngrx/store';
+import { StoreDevtoolsModule } from '@ngrx/store-devtools';
 
 // conditionally import the inmemory resource module
 let serviceImports: Array<any[] | any | ModuleWithProviders>;
@@ -125,7 +131,13 @@ if (process.env.ENV == 'inmemory') {
     ModalModule,
     TabsModule,
     TooltipModule.forRoot(),
-    TruncateModule
+    TruncateModule,
+    StoreModule.forRoot({}),
+    EffectsModule.forRoot([]),
+    StoreModule.forRoot({}),
+    StoreDevtoolsModule.instrument({
+      maxAge: 25 //  Retains last 25 states
+    })
   ],
   declarations: [
     AppComponent,

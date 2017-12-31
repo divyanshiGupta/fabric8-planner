@@ -3,9 +3,12 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  EventEmitter,
   HostListener,
+  Input,
   OnInit,
   OnDestroy,
+  Output,
   ViewChild,
   ViewChildren,
   QueryList
@@ -37,6 +40,7 @@ import { AreaService } from '../../services/area.service';
 import { Comment } from './../../models/comment';
 import { IterationModel } from '../../models/iteration.model';
 import { IterationService } from '../../services/iteration.service';
+import { LabelSelectorComponent } from './../label-selector/label-selector.component';
 import { WorkItemTypeControlService } from '../../services/work-item-type-control.service';
 import { MarkdownControlComponent } from '../markdown-control/markdown-control.component';
 import { TypeaheadDropdown, TypeaheadDropdownValue } from '../typeahead-dropdown/typeahead-dropdown.component';
@@ -45,7 +49,14 @@ import { WorkItem, WorkItemRelations } from '../../models/work-item';
 import { WorkItemService } from '../../services/work-item.service';
 import { WorkItemDataService } from './../../services/work-item-data.service';
 import { WorkItemType } from '../../models/work-item-type';
-import { CollaboratorService } from '../../services/collaborator.service'
+import { CollaboratorService } from '../../services/collaborator.service';
+import { LabelService } from '../../services/label.service';
+import { LabelModel } from '../../models/label.model';
+import { AssigneeSelectorComponent } from './../assignee-selector/assignee-selector.component';
+
+import {
+  SelectDropdownComponent
+} from './../../widgets/select-dropdown/select-dropdown.component';
 
 @Component({
   selector: 'work-item-preview',
@@ -68,13 +79,23 @@ import { CollaboratorService } from '../../services/collaborator.service'
 export class WorkItemDetailComponent implements OnInit, OnDestroy {
 
   @ViewChild('title') title: any;
-  @ViewChild('userSearch') userSearch: any;
   @ViewChild('userList') userList: any;
   @ViewChild('dropdownButton') dropdownButton: any;
   @ViewChild('areaSelectbox') areaSelectbox: TypeaheadDropdown;
   @ViewChild('iterationSelectbox') iterationSelectbox: TypeaheadDropdown;
+  @ViewChild('labelSelector') labelSelector: LabelSelectorComponent;
+  @ViewChild('assignee') assignee : any;
+  @ViewChild('labelname') labelnameInput: ElementRef;
+  @ViewChild('dropdown') dropdownRef: SelectDropdownComponent;
+  @ViewChild('AssigneeSelector') AssigneeSelector: AssigneeSelectorComponent;
+  @Input() selectedLabels: LabelModel[] = [];
+  @Input() selectedAssignees: User[] = [];
+
+  @Output() onOpenSelector: EventEmitter<any> = new EventEmitter();
+  @Output() onCloseSelector: EventEmitter<LabelModel[]> = new EventEmitter();
 
   workItem: WorkItem;
+  workItemRef: WorkItem;
   workItemTypes: WorkItemType[];
 
   showDialog: boolean = false;
@@ -93,7 +114,6 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
   searchAssignee: Boolean = false;
 
   users: User[] = [];
-  filteredUsers: User[] = [];
 
   loggedInUser: User;
 
@@ -115,7 +135,6 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
 
   dynamicFormGroup: FormGroup;
   dynamicFormDataArray: any;
-  usersLoaded: Boolean = false;
 
   saving: Boolean = false;
   savingError: Boolean = false;
@@ -128,11 +147,18 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
   loadingTypes: boolean = false;
   loadingIteration: boolean = false;
   loadingArea: boolean = false;
+  loadingLabels: boolean = false;
+  loadingAssignees: boolean = false;
+  labels: LabelModel[] = [];
+
+  private activeAddAssignee: boolean = false;
+  private searchValue: string = '';
 
   constructor(
     private areaService: AreaService,
     private auth: AuthenticationService,
     private broadcaster: Broadcaster,
+    private labelService: LabelService,
     private workItemService: WorkItemService,
     private workItemDataService: WorkItemDataService,
     private route: ActivatedRoute,
@@ -145,6 +171,16 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
     private spaces: Spaces,
     private collaboratorService: CollaboratorService
   ) {}
+
+  @HostListener('document:click', ['$event.target','$event.target.classList.contains('+'"assigned_user"'+')'])
+  public onClick(targetElement,assigned_user) {
+    if (this.assignee) {
+      const clickedInsidePopup = this.assignee.nativeElement.contains(targetElement);
+      if (!clickedInsidePopup&&!assigned_user) {
+          this.cancelAssignment();
+      }
+    }
+  }
 
   ngOnInit(): void {
     this.saving = false;
@@ -159,6 +195,7 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
 
   openPreview(workitem: WorkItem) {
     if (!workitem) return;
+    this.workItemRef = workitem;
     this.loadWorkItem(workitem.id);
   }
 
@@ -176,7 +213,7 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
       this.workItemDataService.getItem(id)
         .do(workItem => {
           if (workItem) {
-            this.workItem = workItem;
+            this.workItem = cloneDeep(workItem);
             this.titleText = this.workItem.attributes['system.title'];
             this.descText = this.workItem.attributes['system.description'] || '';
             // Open the panel once work item is ready
@@ -195,6 +232,8 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
           this.loadingTypes = true;
           this.loadingIteration = true;
           this.loadingArea = true;
+          this.loadingLabels = true;
+          this.loadingAssignees = true;
         })
         .switchMap(() => this.workItemService.getWorkItemByNumber(id))
         .do(workItem => {
@@ -222,7 +261,8 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
             this.resolveArea(),
             this.resolveIteration(),
             this.resolveLinks(),
-            this.resolveComments()
+            this.resolveComments(),
+            this.resolveLabels()
           )
         })
         .subscribe(() => {
@@ -272,6 +312,7 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
         this.workItem.relationships.assignees = {
           data: assignees
         };
+        this.loadingAssignees = false;
       })
   }
 
@@ -346,6 +387,31 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
       })
   }
 
+  resolveLabels(): Observable<any> {
+    return this.labelService.getLabels()
+      .do(labels => {
+        this.loadingLabels = false;
+        this.labels = cloneDeep(labels);
+        if (this.workItem.relationships.labels.data) {
+          this.workItem.relationships.labels.data =
+          this.workItem.relationships.labels.data.map(label => {
+            return this.labels.find(l => l.id === label.id);
+          });
+          // Sort labels in alphabetical order
+          this.workItem.relationships.labels.data =
+          this.workItem.relationships.labels.data.sort(function(labelA, labelB) {
+            let labelAName = labelA.attributes.name.toUpperCase();
+            let labelBName = labelB.attributes.name.toUpperCase();
+            return labelAName.localeCompare(labelBName);
+          });
+        } else {
+          this.workItem.relationships.labels = {
+            data: []
+          }
+        }
+      })
+  }
+
   createWorkItemObj(type: string) {
     this.workItem = new WorkItem();
     this.workItem.id = null;
@@ -395,28 +461,6 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
     this.workItemService.emitEditWI(this.workItem);
   }
 
-  //addNewItem(workItem: WorkItem) {
-    //this.broadcaster.broadcast('addWorkItem', JSON.stringify(workItem));
-  //}
-
-  checkTitle(event: any): void {
-    this.titleText = event;
-    this.isValid(this.titleText);
-  }
-
-  isValid(checkTitle: String): void {
-    this.validTitle = checkTitle.trim() != '';
-  }
-
-  descOpen(): void {
-    if (this.loggedIn) {
-      if (this.headerEditable) {
-        this.onUpdateTitle();
-      }
-      this.closeUserRestFields();
-    }
-  }
-
   descUpdate(event: any): void {
     const rawText = event.rawText;
     const callBack = event.callBack;
@@ -437,6 +481,13 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
           workItem.attributes['system.description.rendered'];
           this.workItem.attributes['system.description'] =
           workItem.attributes['system.description'];
+
+          // TODO: List update hack. should go away
+          this.workItemRef.attributes['system.description.rendered'] =
+          workItem.attributes['system.description.rendered'];
+          this.workItemRef.attributes['system.description'] =
+          workItem.attributes['system.description'];
+
           this.updateOnList();
         })
     } else {
@@ -466,6 +517,11 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
         .subscribe(workItem => {
           this.workItem.attributes[event.formControlName] =
           workItem.attributes[event.formControlName];
+
+          // TODO: List update hack. should go away
+          this.workItemRef.attributes[event.formControlName] =
+          workItem.attributes[event.formControlName];
+
           this.updateOnList();
         });
     } else {
@@ -538,6 +594,10 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
       .subscribe(
         workItem => {
           this.workItem.attributes['system.state'] = workItem.attributes['system.state'];
+
+          // TODO : List update hack, should go away
+          this.workItemRef.attributes['system.state'] = workItem.attributes['system.state'];
+
           this.updateOnList();
         });
     }
@@ -560,22 +620,71 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
   //   this.save(payload);
   // }
 
-  onUpdateTitle(): void {
-    this.isValid(this.titleText.trim());
-    if (this.validTitle) {
-      this.workItem.attributes['system.title'] = this.titleText;
-      if (this.workItem.id) {
-        let payload = cloneDeep(this.workItemPayload);
-        payload.attributes['system.title'] = this.titleText;
-        this.save(payload, true)
-          .subscribe((workItem: WorkItem) => {
-            this.workItem.attributes['system.title'] = workItem.attributes['system.title'];
-            this.updateOnList();
+  saveTitle(event: any) {
+    const value = event.value.trim();
+    const callBack = event.callBack;
+    if (value === '') {
+      callBack(value, 'Empty title not allowed');
+    } else if (this.workItem.attributes['system.title'] === value) {
+      callBack(value);
+    } else {
+      this.workItem.attributes['system.title'] = value;
+      let payload = cloneDeep(this.workItemPayload);
+      payload.attributes['system.title'] = value;
+      this.save(payload, true)
+        .subscribe((workItem: WorkItem) => {
+          this.workItem.attributes['system.title'] = workItem.attributes['system.title'];
+          callBack(value);
+
+          // TODO: List update hack. should go away
+          this.workItemRef.attributes['system.title'] = workItem.attributes['system.title'];
+
+          this.updateOnList();
+      });
+    }
+  }
+
+  updateLabels(selectedLabels: LabelModel[]) {
+    console.log('labels in WI detail >>>>', selectedLabels);
+    if(this.workItem.id) {
+      this.loadingLabels = true;
+      let payload = cloneDeep(this.workItemPayload);
+      payload = Object.assign(payload, {
+        relationships : {
+          labels: {
+            data: selectedLabels.map(label => {
+              return {
+                id: label.id,
+                type: label.type
+              }
+            })
+          }
+        }
+      });
+      this.save(payload, true)
+        .subscribe(workItem => {
+          this.loadingLabels = false;
+          // Sort labels in alphabetical order
+          selectedLabels = selectedLabels.sort(function(labelA, labelB) {
+            let labelAName = labelA.attributes.name.toUpperCase();
+            let labelBName = labelB.attributes.name.toUpperCase();
+            return labelAName.localeCompare(labelBName);
           });
-      } else {
-        this.save();
-      }
-      this.closeHeader();
+          this.workItem.relationships.labels = {
+            data: selectedLabels
+          };
+
+          // TODO: List update hack. should go away
+          this.workItemRef.relationships.labels = {
+            data: selectedLabels
+          };
+
+          this.updateOnList();
+        })
+    } else {
+      this.workItem.relationships.labels = {
+        data : selectedLabels
+      };
     }
   }
 
@@ -656,38 +765,29 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
 
   deleteComment(comment) {
     this.workItemService
-        .deleteComment(comment)
-        .subscribe(response => {
-            if (response.status === 200) {
-                remove(this.workItem.relationships.comments.data, cursor => {
-                    if (!!comment) {
-                        return cursor.id == comment.id;
-                    }
-                });
+      .deleteComment(comment)
+      .subscribe(response => {
+        if (response.status === 200) {
+          remove(this.workItem.relationships.comments.data, cursor => {
+            if (!!comment) {
+              return cursor.id == comment.id;
             }
-        }, err => console.log(err));
+          });
+        }
+      }, err => console.log(err));
+  }
+
+  removeLable(event) {
+    let labels = cloneDeep(this.workItem.relationships.labels.data);
+    let index = labels.indexOf(labels.find(l => l.id === event.id));
+    if(index > -1) {
+      labels.splice(index, 1);
+      this.updateLabels(labels);
+    }
   }
 
   closeDetails(): void {
-    // //console.log(this.router.url.split('/')[1]);
-    // this.panelState = 'out';
 
-    // // In case detaile wi add, on close type id query param should be removed
-    // let queryParams = cloneDeep(this.queryParams);
-    // if (Object.keys(queryParams).indexOf('type') > -1) {
-    //   delete queryParams['type'];
-    // }
-
-    // // Wait for the animation to finish
-    // // From in to out it takes 300 ms
-    // // So wait for 400 ms
-    // setTimeout(() => {
-    //   this.router.navigate(
-    //     [this.router.url.split('/detail/')[0]],
-    //     {queryParams: queryParams}
-    //   );
-    //   this.broadcaster.broadcast('detail_close')
-    // }, 400);
   }
 
   listenToEvents() {
@@ -710,30 +810,6 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
       this.spaces.current.subscribe(space => {
         this.closePreview();
       })
-      // this.spaces.current.switchMap(space => {
-      //   return this.route.params;
-      // }).subscribe((params) => {
-      //   if (params['id'] !== undefined) {
-      //     id = params['id'];
-      //     if (id === 'new'){
-      //       //Add a new work item
-      //       this.headerEditable = true;
-      //       let type = this.route.snapshot.queryParams['type'];
-      //       // Create new item with the WI type
-      //       this.createWorkItemObj(type);
-      //       // Open the panel
-      //       if (this.panelState === 'out') {
-      //         this.panelState = 'in';
-      //         setTimeout(() => {
-      //           if (this.headerEditable && typeof(this.title) !== 'undefined') {
-      //           this.title.nativeElement.focus();
-      //         }});
-      //       }
-      //     } else {
-      //       this.loadWorkItem(id);
-      //     }
-      //   }
-      // })
     );
   }
 
@@ -750,127 +826,60 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
         this.users = this.users.filter(user => {
           return user.id !== authUser.id;
         });
-        this.filteredUsers = this.users;
-        this.usersLoaded = true;
       });
       this.closeUserRestFields();
       this.searchAssignee = true;
-      // Takes a while to render the component
-      setTimeout(() => {
-        if (this.userSearch) {
-          this.userSearch.nativeElement.focus();
-        }
-      }, 50);
     }
   }
 
-  deactiveSearchAssignee() {
+  assignUser(users: User[]): void {
+    this.loadingAssignees = true;
     this.closeUserRestFields();
-  }
-
-  filterUser(event: any) {
-    // Down arrow or up arrow
-    if (event.keyCode == 40 || event.keyCode == 38) {
-      let lis = this.userList.nativeElement.children;
-      let i = 0;
-      for (; i < lis.length; i++) {
-        if (lis[i].classList.contains('selected')) {
-          break;
-        }
-      }
-      if (i == lis.length) { // No existing selected
-        if (event.keyCode == 40) { // Down arrow
-          lis[0].classList.add('selected');
-          lis[0].scrollIntoView(false);
-        } else { // Up arrow
-          lis[lis.length - 1].classList.add('selected');
-          lis[lis.length - 1].scrollIntoView(false);
-        }
-      } else { // Existing selected
-        lis[i].classList.remove('selected');
-        if (event.keyCode == 40) { // Down arrow
-          lis[(i + 1) % lis.length].classList.add('selected');
-          lis[(i + 1) % lis.length].scrollIntoView(false);
-        } else { // Down arrow
-          // In javascript mod gives exact mod for negative value
-          // For example, -1 % 6 = -1 but I need, -1 % 6 = 5
-          // To get the round positive value I am adding the divisor
-          // with the negative dividend
-          lis[(((i - 1) % lis.length) + lis.length) % lis.length].classList.add('selected');
-          lis[(((i - 1) % lis.length) + lis.length) % lis.length].scrollIntoView(false);
-        }
-      }
-    } else if (event.keyCode == 13) { // Enter key event
-      let lis = this.userList.nativeElement.children;
-      let i = 0;
-      for (; i < lis.length; i++) {
-        if (lis[i].classList.contains('selected')) {
-          break;
-        }
-      }
-      if (i < lis.length) {
-        let selectedId = lis[i].dataset.value;
-        this.assignUser(selectedId);
-      }
-    } else {
-      let inp = this.userSearch.nativeElement.value.trim();
-      this.filteredUsers = this.users.filter((item) => {
-        return item.attributes.fullName.toLowerCase().indexOf(inp.toLowerCase()) > -1;
-      });
-    }
-  }
-
-  assignUser(user: User): void {
     if(this.workItem.id) {
+      this.selectedAssignees = users;
+
       let payload = cloneDeep(this.workItemPayload);
       payload = Object.assign(payload, {
         relationships : {
           assignees: {
-            data: [{
-              id: user.id,
-              type: 'identities'
-            }]
+            data: this.selectedAssignees.map(assignee => {
+              return {
+                id: assignee.id,
+                type: 'identities'
+              }
+            })
           }
         }
       });
       this.save(payload, true)
         .switchMap(workItem => this.workItemService.resolveAssignees(workItem.relationships.assignees))
         .subscribe(assignees => {
+          this.loadingAssignees = false;
           this.workItem.relationships.assignees = {
+            data: assignees
+          };
+
+          // TODO: List update hack. should go away
+          this.workItemRef.relationships.assignees = {
             data: assignees
           };
           this.updateOnList();
         })
     } else {
-      let assignee = [{
-        attributes: {
-          fullName: user.attributes.fullName
-        },
-        id: user.id,
-        type: 'identities'
-      } as User];
+      let assignees = users.map(user => {
+        return {
+          attributes: {
+            fullName: user.attributes.fullName
+          },
+          id: user.id,
+          type: 'identities'
+        } as User;
+      });
       this.workItem.relationships.assignees = {
-        data : assignee
+        data : assignees
       };
     }
-    this.searchAssignee = false;
-  }
-
-  unassignUser(): void {
-    let payload = cloneDeep(this.workItemPayload);
-    payload = Object.assign(payload, {
-      relationships : {
-        assignees: {
-          data: []
-        }
-      }
-    });
-    this.save(payload, true)
-    .subscribe(() => {
-      this.workItem.relationships.assignees.data = [] as User[];
-      this.updateOnList();
-    });
-    this.searchAssignee = false;
+    //this.searchAssignee = false;
   }
 
   cancelAssignment(): void {
@@ -930,6 +939,10 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
         this.loadingIteration = false;
         this.iterations.forEach(it => it.selected = it.key === iterationId);
         this.workItem.relationships.iteration = workItem.relationships.iteration;
+
+        // TODO: List update hack. should go away
+        this.workItemRef.relationships.iteration = workItem.relationships.iteration;
+
         this.updateOnList();
         this.logger.log('Iteration has been updated, sending event to iteration panel to refresh counts.');
         this.broadcaster.broadcast('associate_iteration', {
@@ -1068,6 +1081,10 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
           this.loadingArea = false;
           this.areas.forEach(area => area.selected = area.key === areaId);
           this.workItem.relationships.area = workItem.relationships.area;
+
+          // TODO: List update hack. should go away
+          this.workItemRef.relationships.area = workItem.relationships.area;
+
           this.updateOnList();
       });
     } else {
@@ -1094,6 +1111,19 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
     return this.router.url.split('plan')[0] + 'plan/detail/' + workItem.attributes['system.number'];
   }
 
+  onLabelClick(event) {
+    let params = {
+      label: event.attributes.name
+    }
+    // Prepare navigation extra with query params
+    let navigationExtras: NavigationExtras = {
+      queryParams: params
+    };
+
+    // Navigated to filtered view
+    this.router.navigate([], navigationExtras);
+  }
+
   @HostListener('window:keydown', ['$event'])
   onKeyEvent(event: any) {
     event = (event || window.event);
@@ -1116,5 +1146,22 @@ export class WorkItemDetailComponent implements OnInit, OnDestroy {
         this.closePreview();
       }
     }
+  }
+  onOpen(event) {
+    this.onOpenSelector.emit('open');
+  }
+   onClose(event) {
+    this.onCloseSelector.emit(cloneDeep(this.selectedLabels));
+  }
+
+  openDropdown() {
+    this.dropdownRef.openDropdown();
+  }
+
+  closeDropdown() {
+    this.dropdownRef.closeDropdown();
+  }
+  closeAddAssignee() {
+    this.activeAddAssignee = false;
   }
 }

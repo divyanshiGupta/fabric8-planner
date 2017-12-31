@@ -2,16 +2,14 @@ import { RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { NgModule } from '@angular/core';
-import { TreeModule } from 'angular2-tree-component';
 
-import { CollapseModule } from 'ng2-bootstrap';
+import { CollapseModule } from 'ngx-bootstrap';
 import { BsDropdownConfig, BsDropdownModule } from 'ngx-bootstrap/dropdown';
 
 import {
-  WidgetsModule,
-  TreeListModule
+  WidgetsModule
 } from 'ngx-widgets';
-
+import { ActionModule, ListModule } from 'patternfly-ng';
 import { DragulaModule } from 'ng2-dragula';
 import { FabPlannerIterationModalComponent } from '../iterations-modal/iterations-modal.component';
 import { MyDatePickerModule } from 'mydatepicker';
@@ -24,8 +22,14 @@ import { SwitchModule } from '../switch/switch.module';
 import { TooltipConfig, TooltipModule } from 'ngx-bootstrap/tooltip';
 import { TruncateModule } from 'ng2-truncate';
 
+import { StoreModule } from '@ngrx/store';
+import { EffectsModule } from '@ngrx/effects';
+import { IterationState, initialState as initialIterationState } from './../../states/iteration.state';
+import { iterationReducer } from './../../reducers/iteration.reducer';
+import { IterationEffects } from './../../effects/iteration.effects';
 @NgModule({
   imports: [
+    ActionModule,
     BsDropdownModule.forRoot(),
     CollapseModule,
     CommonModule,
@@ -33,13 +37,22 @@ import { TruncateModule } from 'ng2-truncate';
     FormsModule,
     MyDatePickerModule,
     ModalModule,
+    ListModule,
     TooltipModule.forRoot(),
     TruncateModule,
     SwitchModule,
     WidgetsModule,
     RouterModule,
-    TreeModule,
-    TreeListModule
+    StoreModule.forFeature('listPage', {
+      iterations: iterationReducer
+    }, {
+    initialState: {
+      iterations: initialIterationState
+    }
+  }),
+  EffectsModule.forFeature([IterationEffects])
+    //TreeModule
+    //TreeListModule
   ],
   declarations: [
     FabPlannerIterationModalComponent,

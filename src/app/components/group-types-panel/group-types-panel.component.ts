@@ -16,9 +16,6 @@ import { WorkItem } from '../../models/work-item';
 import { WorkItemType } from '../../models/work-item-type';
 
 @Component({
-  host: {
-    'class':"app-component"
-  },
   selector: 'group-types',
   templateUrl: './group-types-panel.component.html',
   styleUrls: ['./group-types-panel.component.less']
@@ -26,6 +23,7 @@ import { WorkItemType } from '../../models/work-item-type';
 export class GroupTypesComponent implements OnInit, OnDestroy {
 
   @Input() iterations: IterationModel[] = [];
+  @Input() sidePanelOpen: Boolean = true;
 
   authUser: any = null;
   loggedIn: Boolean = true;
@@ -102,6 +100,6 @@ export class GroupTypesComponent implements OnInit, OnDestroy {
     if(groupType.group == 'portfolio') {
       gt = gType.find(groupType => groupType.group == 'portfolio' && groupType.level[1] == 0);
     }
-    this.groupTypesService.setCurrentGroupType(gt.wit_collection);
+    this.groupTypesService.setCurrentGroupType(gt.wit_collection, gt.group);
   }
 }

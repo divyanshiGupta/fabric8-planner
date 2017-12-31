@@ -4,6 +4,7 @@ def ci (){
         container('ui'){
             sh 'npm install'
             sh 'npm run build'
+            sh 'npm pack dist/'
         }
     }
 
@@ -17,7 +18,7 @@ def ci (){
         dir('runtime'){
             container('ui'){
                 sh '''
-        /usr/bin/Xvfb :99 -screen 0 1024x768x24 &
+        /usr/bin/Xvfb :99 -screen 0 1440x900x24 &
         export API_URL=https://api.prod-preview.openshift.io/api/
         export NODE_ENV=inmemory
         npm install
@@ -64,7 +65,7 @@ def cd (b){
         dir('runtime'){
             container('ui'){
                 sh '''
-        /usr/bin/Xvfb :99 -screen 0 1024x768x24 &
+        /usr/bin/Xvfb :99 -screen 0 1440x900x24 &
         export API_URL=https://api.prod-preview.openshift.io/api/
         export NODE_ENV=inmemory
         npm install

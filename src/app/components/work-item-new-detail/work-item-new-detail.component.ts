@@ -1,24 +1,41 @@
-import { Broadcaster } from 'ngx-base';
-import { WorkItemTypeControlService } from './../../services/work-item-type-control.service';
-import { FormGroup } from '@angular/forms';
-import { Comment } from './../../models/comment';
-import { IterationService } from './../../services/iteration.service';
-import { AreaModel } from './../../models/area.model';
-import { IterationModel } from './../../models/iteration.model';
-import { TypeaheadDropdown, TypeaheadDropdownValue } from '../typeahead-dropdown/typeahead-dropdown.component';
-import { AreaService } from './../../services/area.service';
-import { Observable } from 'rxjs';
-import { cloneDeep, merge, remove } from 'lodash';
-import { WorkItemDataService } from './../../services/work-item-data.service';
-import { ActivatedRoute, Router, NavigationExtras, NavigationStart } from '@angular/router';
-import { Spaces } from 'ngx-fabric8-wit';
 import {
   Component,
+  Input,
   OnInit,
   OnDestroy,
-  ViewChild
+  Output,
+  ViewChild,
+  ViewEncapsulation,
+  ElementRef,
+  EventEmitter,
+  Renderer2,
+  HostListener,
+  AfterViewChecked
 } from '@angular/core';
+import { FormGroup } from '@angular/forms';
+import {
+  ActivatedRoute,
+  Router,
+  NavigationExtras,
+  NavigationStart
+} from '@angular/router';
 
+import { Broadcaster } from 'ngx-base';
+import { cloneDeep, merge, remove } from 'lodash';
+import { Spaces } from 'ngx-fabric8-wit';
+import { Observable } from 'rxjs';
+
+import { AreaModel } from './../../models/area.model';
+import { AreaService } from './../../services/area.service';
+import { Comment } from './../../models/comment';
+import { IterationModel } from './../../models/iteration.model';
+import { IterationService } from './../../services/iteration.service';
+import { LabelModel } from './../../models/label.model';
+import { LabelService } from './../../services/label.service';
+import { WorkItemTypeControlService } from './../../services/work-item-type-control.service';
+import { TypeaheadDropdown, TypeaheadDropdownValue } from '../typeahead-dropdown/typeahead-dropdown.component';
+import { WorkItemDataService } from './../../services/work-item-data.service';
+import { ModalService } from '../../services/modal.service';
 import { UrlService } from './../../services/url.service';
 import { WorkItem, WorkItemRelations } from './../../models/work-item';
 import { WorkItemService } from './../../services/work-item.service';
@@ -27,6 +44,11 @@ import { AuthenticationService,
   User,
   UserService
 } from 'ngx-login-client';
+import { AssigneeSelectorComponent } from './../assignee-selector/assignee-selector.component';
+
+import {
+  SelectDropdownComponent
+} from './../../widgets/select-dropdown/select-dropdown.component';
 
 
 @Component({
@@ -35,12 +57,23 @@ import { AuthenticationService,
   styleUrls: [ './work-item-new-detail.component.less' ]
 })
 
-export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
+export class WorkItemNewDetailComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   @ViewChild('userSearch') userSearch: any;
   @ViewChild('areaSelectbox') areaSelectbox: TypeaheadDropdown;
   @ViewChild('iterationSelectbox') iterationSelectbox: TypeaheadDropdown;
   @ViewChild('userList') userList: any;
+  @ViewChild('detailHeader') detailHeader: ElementRef;
+  @ViewChild('detailContent') detailContent: ElementRef;
+  @ViewChild('assignee') assignee: any;
+  @ViewChild('dropdown') dropdownRef: SelectDropdownComponent;
+  @ViewChild('AssigneeSelector') AssigneeSelector: AssigneeSelectorComponent;
+  @Input() selectedLabels: LabelModel[] = [];
+  @Input() selectedAssignees: User[] = [];
+
+  @Output() onOpenSelector: EventEmitter<any> = new EventEmitter();
+  @Output() onCloseSelector: EventEmitter<LabelModel[]> = new EventEmitter();
+
 
   areas: TypeaheadDropdownValue[] = [];
   comments: Comment[] = [];
@@ -48,12 +81,15 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
   dynamicFormDataArray: any;
   iterations: TypeaheadDropdownValue[] = [];
   workItem: WorkItem;
+  workItemRef: WorkItem;
   workItemPayload: WorkItem;
   eventListeners: any[] = [];
   loadingComments: boolean = true;
   loadingTypes: boolean = false;
   loadingIteration: boolean = false;
   loadingArea: boolean = false;
+  loadingLabels: boolean = false;
+  loadingAssignees: boolean = false;
   loggedInUser: User;
   loggedIn: boolean = false;
   users: User[] = [];
@@ -62,6 +98,9 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
   searchAssignee: Boolean = false;
   headerEditable: Boolean = false;
   descText: any = '';
+  labels: LabelModel[] = [];
+
+  private activeAddAssignee: boolean = false;
 
   constructor(
     private areaService: AreaService,
@@ -69,6 +108,7 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
     private broadcaster: Broadcaster,
     private collaboratorService: CollaboratorService,
     private iterationService: IterationService,
+    private labelService: LabelService,
     private route: ActivatedRoute,
     private router: Router,
     private spaces: Spaces,
@@ -77,7 +117,17 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
     private workItemService: WorkItemService,
     private workItemDataService: WorkItemDataService,
     private workItemTypeControlService: WorkItemTypeControlService,
+    private renderer: Renderer2,
+    private modalService: ModalService
   ) {}
+
+  @HostListener('document:click', ['$event.target','$event.target.classList.contains('+'"assigned_user"'+')'])
+  public onClick(targetElement,assigned_user) {
+      const clickedInsidePopup = this.assignee.nativeElement.contains(targetElement);
+      if (!clickedInsidePopup&&!assigned_user) {
+          this.cancelAssignment();
+      }
+  }
 
   ngOnInit() {
     this.loggedIn = this.auth.isLoggedIn();
@@ -92,10 +142,13 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
       .takeUntil(takeUntilObserver)
       .subscribe((params) => {
           let workItemId = params['id'];
-          if (workItemId === 'new'){
+          if (workItemId === 'new') {
             // Create new work item ID
+            // you can add type, iteration and area GET params to the url to preselect values
             let type = this.route.snapshot.queryParams['type'];
-            this.createWorkItemObj(type);
+            let iteration = this.route.snapshot.queryParams['iteration'];
+            let area = this.route.snapshot.queryParams['area'];
+            this.createWorkItemObj(type, iteration, area);
           } else if (workItemId.split('-').length > 1) {
             // The ID is a UUID
             // To make it backword compaitable
@@ -126,9 +179,24 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     console.log('Destroying all the listeners in detail component');
     this.eventListeners.forEach(subscriber => subscriber.unsubscribe());
+    document.getElementsByTagName('body')[0].style.overflow = "auto";
   }
 
-  createWorkItemObj(type: string) {
+  ngAfterViewChecked() {
+    if(this.detailHeader) {
+      let HdrDivHeight:any =  this.detailHeader.nativeElement.offsetHeight;
+      let targetHeight:any = window.innerHeight - HdrDivHeight - 90;
+      this.renderer.setStyle(this.detailContent.nativeElement, 'height', targetHeight + "px");
+    }
+    if(document.getElementsByTagName('body')) {
+      document.getElementsByTagName('body')[0].style.overflow = "hidden";
+    }
+  }
+  @HostListener('window:resize', ['$event'])
+    onResize(event){
+
+    }
+  createWorkItemObj(type: string, iterationId: string, areaId: string) {
     this.workItem = new WorkItem();
     this.workItem.id = null;
     this.workItem.attributes = new Map<string, string | number>();
@@ -145,23 +213,52 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
         }
       }
     } as WorkItemRelations;
-
+    // create base empty relationship structure
+    this.workItem.relationships = Object.assign(this.workItem.relationships, {});
     // Add creator
     this.userService.getUser()
       .subscribe(
         user => {
-          this.workItem.relationships = Object.assign(
-            this.workItem.relationships,
-            {
-              creator: {
-                data: user
-              }
-            }
-          );
+          this.workItem.relationships.creator = {
+            data: user
+          };
         },
         err => console.log(err)
       );
-
+    // if the iteration is given, add the iteration
+    if (iterationId) {
+      this.iterationService.getIterationById(iterationId)
+      .subscribe(
+        iteration => {
+          // update the iteration value list
+          this.getIterations();
+          // select the returned iteration in that list
+          this.iterations.forEach(thisIteration => thisIteration.selected = thisIteration.key === iteration.id);
+          // set the value on the model
+          this.workItem.relationships.iteration = {
+            data: iteration
+          };
+        },
+        err => console.log(err)
+      );
+    }
+    // if the area is given, add the area
+    if (areaId) {
+      this.areaService.getAreaById(areaId)
+      .subscribe(
+        area => {
+          // update the area value list
+          this.getAreas();
+          // select the returned area in that list
+          this.areas.forEach(thisArea => thisArea.selected = thisArea.key === area.id);
+          // set the value on the model
+          this.workItem.relationships.area = {
+            data: area
+          };
+        },
+        err => console.log(err)
+      );
+    }
     this.workItem.relationalData = {};
     this.workItemService.resolveType(this.workItem);
     this.workItem.attributes['system.state'] = 'new';
@@ -183,6 +280,8 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
           this.loadingTypes = true;
           this.loadingIteration = true;
           this.loadingArea = true;
+          this.loadingLabels = true;
+          this.loadingAssignees = true;
         })
         .switchMap(() => this.workItemService.getWorkItemByNumber(id, owner, space))
         .do(workItem => {
@@ -192,7 +291,7 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
           const t2 = performance.now();
           console.log('Performance :: Details page first paint - '  + (t2 - t1) + ' milliseconds.');
         })
-        .do (workItem => console.log('Work item fethced: ', cloneDeep(workItem)))
+        .do (workItem => console.log('Work item fetched: ', cloneDeep(workItem)))
         .take(1)
         .switchMap(() => {
           return Observable.combineLatest(
@@ -202,12 +301,12 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
             this.resolveArea(),
             this.resolveIteration(),
             this.resolveLinks(),
-            this.resolveComments()
+            this.resolveComments(),
+            this.resolveLabels()
           )
         })
         .subscribe(() => {
-          // this.closeUserRestFields();
-
+          this.closeUserRestFields();
           this.workItemPayload = {
             id: this.workItem.id,
             number: this.workItem.number,
@@ -219,7 +318,6 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
             },
             type: this.workItem.type
           };
-
           // init dynamic form
           if (this.workItem.relationships.baseType.data.attributes) {
             this.dynamicFormGroup = this.workItemTypeControlService.toFormGroup(this.workItem);
@@ -227,7 +325,6 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
           }
         },
         err => {
-          //console.log(err);
           //setTimeout(() => this.itemSubscription.unsubscribe());
           // this.closeDetails();
         })
@@ -246,12 +343,16 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
   }
 
   resolveAssignees(): Observable<any> {
+    this.activeSearchAssignee();
     return this.workItemService.resolveAssignees(this.workItem.relationships.assignees)
       .do(assignees => {
         // Resolve assignees
         this.workItem.relationships.assignees = {
           data: assignees
         };
+        this.loadingAssignees = false;
+
+    console.log("RESOLVE");
       })
   }
 
@@ -324,6 +425,41 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
         this.comments = this.workItem.relationships.comments.data;
         this.loadingComments = false;
       })
+  }
+
+  resolveLabels(): Observable<any> {
+    return this.labelService.getLabels()
+      .do(labels => {
+        this.loadingLabels = false;
+        this.labels = labels;
+        if (this.workItem.relationships.labels.data) {
+          this.workItem.relationships.labels.data =
+          this.workItem.relationships.labels.data.map(label => {
+            return this.labels.find(l => l.id === label.id);
+          });
+          // Sort labels in alphabetical order
+          this.workItem.relationships.labels.data =
+          this.workItem.relationships.labels.data.sort(function(labelA, labelB) {
+            let labelAName = labelA.attributes.name.toUpperCase();
+            let labelBName = labelB.attributes.name.toUpperCase();
+            return labelAName.localeCompare(labelBName);
+          });
+        } else {
+          this.workItem.relationships.labels = {
+            data: []
+          }
+        }
+      })
+  }
+
+  onLabelSelectorOpen(event) {
+    if (!this.workItem.id) {
+      this.labelService.getLabels()
+        .subscribe(labels => this.labels = labels);
+    }
+  }
+  onAssigneeSelectorOpen(event) {
+    console.log("Dropdown open");
   }
 
   getAllUsers(): Observable<any> {
@@ -532,109 +668,85 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
     this.closeUserRestFields();
   }
 
-  filterUser(event: any) {
-    // Down arrow or up arrow
-    if (event.keyCode == 40 || event.keyCode == 38) {
-      let lis = this.userList.nativeElement.children;
-      let i = 0;
-      for (; i < lis.length; i++) {
-        if (lis[i].classList.contains('selected')) {
-          break;
-        }
-      }
-      if (i == lis.length) { // No existing selected
-        if (event.keyCode == 40) { // Down arrow
-          lis[0].classList.add('selected');
-          lis[0].scrollIntoView(false);
-        } else { // Up arrow
-          lis[lis.length - 1].classList.add('selected');
-          lis[lis.length - 1].scrollIntoView(false);
-        }
-      } else { // Existing selected
-        lis[i].classList.remove('selected');
-        if (event.keyCode == 40) { // Down arrow
-          lis[(i + 1) % lis.length].classList.add('selected');
-          lis[(i + 1) % lis.length].scrollIntoView(false);
-        } else { // Down arrow
-          // In javascript mod gives exact mod for negative value
-          // For example, -1 % 6 = -1 but I need, -1 % 6 = 5
-          // To get the round positive value I am adding the divisor
-          // with the negative dividend
-          lis[(((i - 1) % lis.length) + lis.length) % lis.length].classList.add('selected');
-          lis[(((i - 1) % lis.length) + lis.length) % lis.length].scrollIntoView(false);
-        }
-      }
-    } else if (event.keyCode == 13) { // Enter key event
-      let lis = this.userList.nativeElement.children;
-      let i = 0;
-      for (; i < lis.length; i++) {
-        if (lis[i].classList.contains('selected')) {
-          break;
-        }
-      }
-      if (i < lis.length) {
-        let selectedId = lis[i].dataset.value;
-        this.assignUser(selectedId);
-      }
-    } else {
-      let inp = this.userSearch.nativeElement.value.trim();
-      this.filteredUsers = this.users.filter((item) => {
-        return item.attributes.fullName.toLowerCase().indexOf(inp.toLowerCase()) > -1;
-      });
-    }
-  }
-
-  assignUser(user: User): void {
+  assignUser(users: User[]): void {
+    this.loadingAssignees = true;
     if(this.workItem.id) {
+      this.selectedAssignees = users;
+
       let payload = cloneDeep(this.workItemPayload);
       payload = Object.assign(payload, {
         relationships : {
           assignees: {
-            data: [{
-              id: user.id,
-              type: 'identities'
-            }]
+            data: this.selectedAssignees.map(assignee => {
+              return {
+                id: assignee.id,
+                type: 'identities'
+              }
+            })
           }
         }
       });
       this.save(payload, true)
-        .switchMap(workItem => this.workItemService.resolveAssignees(workItem.relationships.assignees))
-        .subscribe(assignees => {
-          this.workItem.relationships.assignees = {
-            data: assignees
-          };
-          this.updateOnList();
-        })
+      .switchMap(workItem => this.workItemService.resolveAssignees(workItem.relationships.assignees))
+      .subscribe(assignees => {
+        this.loadingAssignees = false;
+        this.workItem.relationships.assignees = {
+          data: assignees
+        };
+        this.updateOnList()
+      })
     } else {
-      let assignee = [{
-        attributes: {
-          fullName: user.attributes.fullName
-        },
-        id: user.id,
-        type: 'identities'
-      } as User];
+      let assignees = users.map(user => {
+        return {
+          attributes: {
+            fullName: user.attributes.fullName
+          },
+          id: user.id,
+          type: 'identities'
+        } as User;
+      });
       this.workItem.relationships.assignees = {
-        data : assignee
+        data : assignees
       };
+      console.log("STEP 3");
     }
-    this.searchAssignee = false;
+    //this.searchAssignee = false;
   }
 
-  unassignUser(): void {
-    let payload = cloneDeep(this.workItemPayload);
-    payload = Object.assign(payload, {
-      relationships : {
-        assignees: {
-          data: []
+  updateLabels(selectedLabels: LabelModel[]) {
+    if(this.workItem.id) {
+      this.loadingLabels = true;
+      let payload = cloneDeep(this.workItemPayload);
+      payload = Object.assign(payload, {
+        relationships : {
+          labels: {
+            data: selectedLabels.map(label => {
+              return {
+                id: label.id,
+                type: label.type
+              }
+            })
+          }
         }
-      }
-    });
-    this.save(payload, true)
-    .subscribe(() => {
-      this.workItem.relationships.assignees.data = [] as User[];
-      this.updateOnList();
-    });
-    this.searchAssignee = false;
+      });
+      this.save(payload, true)
+        .subscribe(workItem => {
+          // Sort labels in alphabetical order
+          selectedLabels = selectedLabels.sort(function(labelA, labelB) {
+            let labelAName = labelA.attributes.name.toUpperCase();
+            let labelBName = labelB.attributes.name.toUpperCase();
+            return labelAName.localeCompare(labelBName);
+          });
+          this.workItem.relationships.labels = {
+            data: selectedLabels
+          };
+          this.loadingLabels = false;
+        })
+    } else {
+      this.workItem.relationships.labels = {
+        data : selectedLabels
+      };
+    }
   }
 
   cancelAssignment(): void {
@@ -665,6 +777,15 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
       (error) => {
           console.log(error);
       });
+  }
+
+  removeLable(event) {
+    let labels = cloneDeep(this.workItem.relationships.labels.data);
+    let index = labels.indexOf(labels.find(l => l.id === event.id));
+    if(index > -1) {
+      labels.splice(index, 1);
+      this.updateLabels(labels);
+    }
   }
 
   updateComment(comment) {
@@ -779,6 +900,7 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
       });
     }
   }
+
   iterationUpdated(iterationId: string): void {
     if (iterationId === '0') return; // Loading item
     this.loadingIteration = true;
@@ -900,9 +1022,38 @@ export class WorkItemNewDetailComponent implements OnInit, OnDestroy {
 
   navigateBack() {
     if (this.urlService.getLastListOrBoard() === '') {
-      this.router.navigate(['..']);
+      this.router.navigate(['../..'], { relativeTo: this.route });
     } else {
       this.router.navigateByUrl(this.urlService.getLastListOrBoard());
     }
+  }
+
+  onLabelClick(label) {
+    if (this.urlService.getLastListOrBoard() === '') {
+      let params = {
+        label: label.attributes.name
+      }
+      // Prepare navigation extra with query params
+      let navigationExtras: NavigationExtras = {
+        relativeTo: this.route,
+        queryParams: params
+      };
+      this.router.navigate(['../..'], navigationExtras);
+    } else {
+      let url = this.urlService.getLastListOrBoard().split('?')[0]
+        + '?label=' + label.attributes.name;
+      this.router.navigateByUrl(url);
+    }
+  }
+
+  openDropdown() {
+    this.dropdownRef.openDropdown();
+  }
+
+  closeDropdown() {
+    this.dropdownRef.closeDropdown();
+  }
+  closeAddAssignee() {
+    this.activeAddAssignee = false;
   }
 }

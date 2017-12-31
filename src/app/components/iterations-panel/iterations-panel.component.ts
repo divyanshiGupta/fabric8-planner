@@ -1,11 +1,10 @@
 import { FilterService } from './../../services/filter.service';
 import { Observable } from 'rxjs/Observable';
 import { Subscription } from 'rxjs/Subscription';
-import { TreeNode } from 'angular2-tree-component';
 
 import { Params, ActivatedRoute } from '@angular/router';
 import { Component, OnInit, OnDestroy,
-  TemplateRef, Input, OnChanges, ViewChild, ViewEncapsulation } from '@angular/core';
+  TemplateRef, Input, OnChanges, ViewChild, ViewEncapsulation, Output, EventEmitter } from '@angular/core';
 
 import { Broadcaster, Logger, Notification, NotificationType, Notifications } from 'ngx-base';
 import { AuthenticationService } from 'ngx-login-client';
@@ -19,7 +18,18 @@ import { WorkItemService }   from '../../services/work-item.service';
 import { IterationModel } from '../../models/iteration.model';
 import { WorkItem } from '../../models/work-item';
 import { FabPlannerIterationModalComponent } from '../iterations-modal/iterations-modal.component';
-import { TreeListComponent } from 'ngx-widgets';
+import {
+  Action,
+  EmptyStateConfig,
+  ListBase,
+  ListEvent,
+  TreeListComponent,
+  TreeListConfig
+} from 'patternfly-ng';
+
+import { Store } from '@ngrx/store';
+import { AppState } from 'src/app/states/app.state';
+import * as IterationActions from './../../actions/iteration.actions';
 
 @Component({
   encapsulation: ViewEncapsulation.None,
@@ -32,13 +42,10 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
   @Input() takeFromInput: boolean = false;
   @Input() iterations: IterationModel[] = [];
   @Input() collection = [];
+  @Input() sidePanelOpen: Boolean = true;
 
   @ViewChild('modal') modal: FabPlannerIterationModalComponent;
   @ViewChild('treeList') treeList: TreeListComponent;
-  @ViewChild('treeListItemTemplate') treeListItemTemplate: TemplateRef<any>;
-  @ViewChild('treeListLoadTemplate') treeListLoadTemplate: TemplateRef<any>;
-  @ViewChild('treeListTemplate') treeListTemplate: TemplateRef<any>;
-  @ViewChild('treeListItem') treeListItem: TreeListComponent;
 
 
   authUser: any = null;
@@ -54,14 +61,10 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
   masterIterations;
   treeIterations;
   activeIterations:IterationModel[] = [];
+  emptyStateConfig: EmptyStateConfig;
+  treeListConfig: TreeListConfig;
 
   private spaceSubscription: Subscription = null;
-
-  // See: https://angular2-tree.readme.io/docs/options
-  treeListOptions = {
-    allowDrag: false,
-    levelPadding: 30,
-  };
 
   constructor(
     private log: Logger,
@@ -75,7 +78,8 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
     private route: ActivatedRoute,
     private spaces: Spaces,
     private workItemDataService: WorkItemDataService,
-    private workItemService: WorkItemService) {
+    private workItemService: WorkItemService,
+    private store: Store<AppState>) {
       let bag: any = this.dragulaService.find('wi-bag');
       this.dragulaEventListeners.push(
         this.dragulaService.drop
@@ -132,6 +136,28 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
         this.activeIterations = [];
       }
     });
+    this.setTreeConfigs();
+  }
+
+  setTreeConfigs() {
+    this.emptyStateConfig = {
+      iconStyleClass: '',
+      title: 'No Iterations Available',
+      info: ''
+    } as EmptyStateConfig;
+
+    this.treeListConfig = {
+      dblClick: false,
+      emptyStateConfig: this.emptyStateConfig,
+      multiSelect: false,
+      selectItems: true,
+      selectionMatchProp: 'name',
+      showCheckbox: false,
+      treeOptions: {
+        allowDrag: false,
+        isExpandedField: 'expanded'
+      }
+    } as TreeListConfig;
   }
 
   ngOnChanges() {
@@ -145,7 +171,6 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
       }
       this.clusterIterations();
       this.treeIterations = this.iterationService.getTopLevelIterations(this.allIterations);
-      console.log('this.treeIterations = ', this.treeIterations);
     }
   }
 
@@ -199,7 +224,6 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
         .subscribe((iterations) => {
           // do not display the root iteration on the iteration panel.
           this.allIterations = [];
-          console.log('....5 ', this.allIterations.length);
           for (let i=0; i<iterations.length; i++) {
             if (!this.iterationService.isRootIteration(iterations[i])) {
               this.allIterations.push(iterations[i]);
@@ -220,33 +244,36 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
   resolvedName(iteration: IterationModel) {
     return iteration.attributes.resolved_parent_path + '/' + iteration.attributes.name;
   }
-
-  onCreateOrupdateIteration(iteration: IterationModel) {
-    let index = this.allIterations.findIndex((it) => it.id === iteration.id);
-    if (index >= 0) {
-      this.allIterations[index] = iteration;
-    } else {
-      this.allIterations.splice(this.allIterations.length, 0, iteration);
-      //Check if the new iteration has a parent
-      if (!this.iterationService.isTopLevelIteration(iteration)) {
-        let parent = this.iterationService.getDirectParent(iteration, this.allIterations);
-        let parentIndex = this.allIterations.findIndex(i => i.id === parent.id);
-        if(!this.allIterations[parentIndex].children) {
-          this.allIterations[parentIndex].children = [];
-          this.allIterations[parentIndex].hasChildren = true;
-        }
-        this.allIterations[parentIndex].children.push(iteration);
-      }
-      let childIterations = this.iterationService.checkForChildIterations(iteration, this.allIterations);
-      if(childIterations.length > 0) {
-        this.allIterations[this.allIterations.length].hasChildren = true;
-        this.allIterations[this.allIterations.length].children = childIterations;
-      }
-    }
+  //This function is called after the iteration modal closes.
+  addIteration(iteration: IterationModel[]){
+    console.log("####-6");
+    var newIteration;
+    this.store.dispatch(new IterationActions.Add(iteration[0],iteration[1]));
+    this.store.select((newIt:AppState)=> {return newIt.listPage.iterations.iterations}).subscribe((newIt)=>{console.log("log1"+newIt);this.allIterations=newIt});
+    console.log("####-7");
+    console.log(this.allIterations);
     this.treeIterations = this.iterationService.getTopLevelIterations(this.allIterations);
-    this.treeList.updateTree();
+    this.treeList.update();
     this.clusterIterations();
+    this.store.select((newIt:AppState)=> {return newIt.listPage.iterations.newIteration}).subscribe((newIt)=>{console.log("log2"+newIt);newIteration=newIt});
+    console.log("####-8"+newIteration);
+    this.iterationService.emitCreateIteration(newIteration);
+
   }
+
+  updateIteration(iteration: IterationModel){
+    var newIteration;
+    this.store.dispatch(new IterationActions.Update(iteration));
+    this.store.select((newIt:AppState)=> {return newIt.listPage.iterations.iterations}).subscribe((newIt)=>{this.allIterations=newIt});
+    console.log(this.allIterations);
+    this.treeIterations = this.iterationService.getTopLevelIterations(this.allIterations);
+    this.treeList.update();
+    this.clusterIterations();
+    this.store.select((newIt:AppState)=> {return newIt.listPage.iterations.newIteration}).subscribe((newIt)=>{newIteration=newIt});
+    this.iterationService.emitCreateIteration(newIteration);
+  }
+
+  
 
   getWorkItemsByIteration(iteration: IterationModel) {
     let filters: any = [];
@@ -375,21 +402,21 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
 
   onEdit(event) {
     let iteration = this.allIterations.find(item =>
-      item.id === event.iteration.id
+      item.id === event.id
     );
     this.modal.openCreateUpdateModal('update', iteration);
   }
 
   onClose(event) {
     let iteration = this.allIterations.find(item =>
-      item.id === event.iteration.id
+      item.id === event.id
     );
     this.modal.openCreateUpdateModal('close', iteration);
   }
 
   onCreateChild(event) {
     let iteration = this.allIterations.find(item =>
-      item.id === event.iteration.id
+      item.id === event.id
     );
     this.modal.openCreateUpdateModal('createChild', iteration);
   }
@@ -434,5 +461,13 @@ export class IterationComponent implements OnInit, OnDestroy, OnChanges {
           this.updateItemCounts();
       })
     );
+  }
+
+  //Patternfly-ng's tree list related functions
+  handleClick($event: Action, item: any) {
+  }
+
+  setGuidedTypeWI() {
+    this.groupTypesService.setCurrentGroupType(this.collection, 'execution');
   }
  }

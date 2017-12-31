@@ -179,10 +179,11 @@ class WorkItemListPage {
   }
 
   clickIterationById(text){
-    return element(by.id(text)).click();
+    return this.IterationById(text).click();
   }
-  IterationsById(text){
-    return element(by.id(text));
+
+  IterationById(text){
+    return element(by.id('iteration-' + text));
   }
   clickParentIterationDropDown(){
     return this.parentIterationDropDown().click();
@@ -194,12 +195,13 @@ class WorkItemListPage {
   }
 
   selectParentIterationById  (ids){
-    return element(by.id("iteration-id"+ids)).click();
+    return this.parentIterationById(ids).click();
   }
 
   parentIterationById  (ids){
-    return element(by.id("iteration-id"+ids));
+    return element(by.id("iteration-"+ids));
   }
+
   get workItemPopUpDeleteConfirmButton () {
     return element(by.buttonText('Confirm'));
   }
@@ -236,6 +238,7 @@ class WorkItemListPage {
   }
 
   clickQuickAddSave () {
+    browser.wait(until.visibilityOf(this.saveButton), constants.LONGER_WAIT, 'Failed to find the saveButton'); 
     browser.wait(until.presenceOf(this.saveButton), constants.WAIT, 'Failed to find the saveButton');
     return this.saveButton.click();
   }
@@ -258,7 +261,7 @@ class WorkItemListPage {
   /* xpath = //alm-work-item-list-entry[.//text()[contains(.,'Some Title 6')]]   */
   workItemByTitle (titleString) {
     // return element(by.xpath("//alm-work-item-list-entry[.//text()[contains(.,'" + titleString + "')]]"));
-    return element(by.xpath("//alm-tree-list-item[.//text()[contains(.,'" + titleString + "')]]"));
+    return element(by.xpath("//tree-node[.//text()='" + titleString + "']"));
   }
 
   get firstWorkItem () {
@@ -274,13 +277,13 @@ class WorkItemListPage {
     return workItemElement.element(by.css(".f8-wi__list-title")).element(by.css("p")).getText();
   }
 
-  clickWorkItemTitle (workItemElement, idText) {
-    workItemElement.element(by.css(".f8-wi__list-title")).element(by.css("p")).click();
-    var theDetailPage = new WorkItemDetailPage (idText);
-    var until = protractor.ExpectedConditions;
-    //browser.wait(until.presenceOf(theDetailPage.workItemDetailPageTitle), constants.WAIT, 'Detail page title taking too long to appear in the DOM');
-    browser.wait(testSupport.waitForText(theDetailPage.clickWorkItemDetailTitle), constants.WAIT, "Title text is still not present");
-    return theDetailPage;
+  clickWorkItemTitle (title) {
+    return this.clickWorkItem(this.workItemByTitle(title));
+  }
+
+  clickWorkItem(workItemElement) {
+    workItemElement.$$(".f8-wi__list-description").first().element(by.css("p")).click()
+    return new WorkItemDetailPage();
   }
 
   /* Description element relative to a workitem */
@@ -346,6 +349,10 @@ class WorkItemListPage {
     return button.click();
   }
 
+  workItemAttachedLabels(workItem){
+    return workItem.$$('.f8-wi__list-entry span.label');
+  }
+
   /* User assignment dropdown */
   get filterDropdown () {
     return  element(by.id("wi_filter_dropdown"));
@@ -403,8 +410,9 @@ class WorkItemListPage {
   }
 
   get workItemFilterPulldownEdited () {
-    browser.wait(until.presenceOf(element(by.css("span.filter-option.pull-left"))), constants.WAIT, 'Failed to find filter-by dropdown list');
-    return element(by.css("span.filter-option.pull-left"));
+    var xpathStr = ".//input[contains(@type,'text')]";
+    browser.wait(until.presenceOf(element(by.xpath(xpathStr))), constants.WAIT, 'Failed to find filter-by dropdown list');
+    return element(by.xpath(xpathStr));
   }
   clickWorkItemFilterPulldownEdited () {
     return this.workItemFilterPulldownEdited.click();
@@ -608,7 +616,9 @@ class WorkItemListPage {
 
   /* Iterations Page object model */
   clickIterationKebab (index){
-    return element(by.xpath ("(.//button[@class='btn btn-link dropdown-toggle']/i[@class='fa fa-ellipsis-v'])["+ index +"]")).click();
+//    return element(by.xpath("(//div[@class='f8-itr-entry']//button[@class='btn btn-link dropdown-toggle'])["+index+"]")).click();
+    return element(by.xpath(".//*[contains (@id, 'iterationList_OuterWrap_" + index + "')]/..")).click();
+    //   .//*[contains (@id, 'iterationList_OuterWrap_
   }
   clickEditIterationKebab (){
     return element(by.linkText ("Edit")).click();
@@ -618,6 +628,9 @@ class WorkItemListPage {
   }
   clickCloseIterationKebab (){
     return element(by.linkText ("Close")).click();
+  }
+  clickCloseIterationConfirmation() {
+    return element(by.id('create-iteration-button')).click();
   }
   clickChildIterationKebab (){
     return element(by.linkText ("Create child")).click();
@@ -665,6 +678,9 @@ class WorkItemListPage {
     return element(by.css('.iteration-count')).getText();
   }
 
+  IterationByName(name){
+    return element(by.xpath(".//text()[contains(.,'" + name + "')]/../../../.."));
+  }
 
   get lastFutureIteration () {
     return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li")).last();
@@ -694,19 +710,24 @@ class WorkItemListPage {
     return element(by.css(".f8-itr__add")).click();
   }
 
-  get iterationTitle  (){
-    return element(by.css(".f8-itr-name")).click();
+  get iterationTitleFromList  (){
+    return element(by.css('.f8-itr-name'));
   }
+
+  get iterationTitleFromModal  (){
+    return element(by.id("iteration-name"));
+  }
+
   setIterationTitle  (newTitleString,append){
-    if (!append) { this.iterationTitle.clear(newTitleString) };
-    return this.iterationTitle.sendKeys(newTitleString);
+    if (!append) { this.iterationTitleFromModal.clear(newTitleString) };
+    return this.iterationTitleFromModal.sendKeys(newTitleString);
   }
   get iterationDescription  (){
-    return element(by.id("iteration-description")).click();
+    return element(by.id("iteration-description"));
   }
   setIterationDescription  (newString,append){
-     if (!append) { this.iterationDescription.clear(newString) };
-    return this.iterationDescription.sendKeys(newString);
+     if (!append) { this.iterationDescription.click().clear(newString) };
+    return this.iterationDescription.click().sendKeys(newString);
   }
   get createItreationButton (){
     return element(by.id('create-iteration-button'));
@@ -736,8 +757,12 @@ class WorkItemListPage {
     return element(by.id('iteration-select-dropdown'));
   }
 
+  get forceActiveLabel(){
+    return element(by.css('.f8-active-label'));
+  }
+
   get activeIterationButton () {
-    return  element(by.id("active-switch"));
+    return element(by.css("#active-switch > label"));
   }
 
   clickActiveIterationButton () {
@@ -745,7 +770,7 @@ class WorkItemListPage {
   }
 
   activeIterationButtonStatus (){
-    return this.activeIterationButton.isSelected();
+    return this.activeIterationButton.element(by.css('input')).getAttribute('checked');
   }
 
   getPortfolio() {

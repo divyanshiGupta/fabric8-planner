@@ -25,6 +25,9 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   @Output()
   public onSubmit = new EventEmitter();
 
+  @Output()
+  public onUpdate = new EventEmitter();
+
   @ViewChild('createUpdateIterationDialog') createUpdateIterationDialog: any;
   @ViewChild('iterationSearch') iterationSearch: any;
   @ViewChild('iterationList') iterationList: any;
@@ -139,7 +142,6 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnChanges() {
-    console.log(this.modalType);
   }
 
   ngOnDestroy() {
@@ -155,7 +157,7 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
     if(e) {
       e.stopPropagation();
     }
-    console.log('iteration ====', iteration);
+
     this.modalType = type;
     if (iteration) {
       this.iteration = cloneDeep(iteration);
@@ -216,7 +218,6 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   }
 
   actionOnClose() {
-    //console.log('Close');
     this.resetValues();
   }
 
@@ -235,6 +236,9 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
     // event properties are: event.date, event.jsdate, event.formatted and event.epoc
     this.endDate = { date: event.date };
     this.iteration.attributes.endAt = moment(event.jsdate).format('YYYY-MM-DD') + 'T12:00:00Z';
+    let startDatePickerComponentCopy = Object.assign({}, this.startDatePickerOptions);
+    startDatePickerComponentCopy['disableSince'] = event.date;
+    this.startDatePickerOptions = startDatePickerComponentCopy;
   }
 
   iterationSearchFocus() {
@@ -341,16 +345,12 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
           this.iteration.attributes.name.indexOf('\\') === -1 ) {
         this.validationError = false;
         if (this.modalType == 'create' || this.modalType == "createChild") {
-          this.iterationService.createIteration(this.iteration, this.selectedParentIteration)
-              .subscribe((iteration) => {
-                this.onSubmit.emit(iteration);
+          var newit = [this.iteration,this.selectedParentIteration];
+                console.log("####-5");
+                this.onSubmit.emit(newit);
                 this.resetValues();
                 this.createUpdateIterationDialog.close();
-          },
-          (e) => {
-            this.validationError = true;
-            console.log('Some error has occured', e);
-          });
+          
         } else {
           if (this.modalType == 'start') {
             this.iteration.attributes.state = 'start';
@@ -361,9 +361,7 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
             // Not include state if it's just an update
             delete this.iteration.attributes.state;
           }
-          this.iterationService.updateIteration(this.iteration)
-            .subscribe((iteration) => {
-              this.onSubmit.emit(iteration);
+              this.onUpdate.emit(this.iteration);
               if (this.modalType == 'start') {
                 let toastIterationName = this.iteration.attributes.name;
                 if (toastIterationName.length > 15) {
@@ -378,13 +376,8 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
               }
               this.resetValues();
               this.createUpdateIterationDialog.close();
-            },
-            (e) => {
-              this.spaceError = true;
-              // this.resetValues();
-              // console.log('Some error has occured', e.toString());
-            });
-        }
+            }
+        
       } else {
         this.validationError = true;
         this.validationString = '/ or \\ are not allowed in iteration name.';

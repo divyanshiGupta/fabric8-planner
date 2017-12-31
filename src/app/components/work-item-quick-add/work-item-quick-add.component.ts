@@ -186,7 +186,13 @@ export class WorkItemQuickAddComponent implements OnInit, OnDestroy, OnChanges, 
       event.preventDefault();
     this.logger.log('Selected type ' + type.attributes.name + ' for quick add.');
     this.selectedType = type;
+    var wiTitle = this.workItem.attributes['system.title'];
+    var wiDescription = this.workItem.attributes['system.description'];
     this.createWorkItemObj();
+    if (wiTitle)
+      this.workItem.attributes['system.title'] = wiTitle;
+    if (wiDescription)
+      this.workItem.attributes['system.description'] = wiDescription;
   }
 
   createLinkObject(workItem: WorkItem, childWI: WorkItem, linkId: string) : void {
@@ -251,9 +257,12 @@ export class WorkItemQuickAddComponent implements OnInit, OnDestroy, OnChanges, 
     if (this.workItem.attributes['system.title']) {
       this.qaSubmit.nativeElement.setAttribute('disabled', true);
       this.qaTitle.nativeElement.setAttribute('disabled', true);
+      this.workItem.hasChildren = false;
+      console.log('before create ', this.workItem)
       this.workItemService
         .create(this.workItem)
         .map((workItem: WorkItem) => {
+          workItem.hasChildren = false;
           workItem.relationships.baseType.data = this.selectedType;
           return workItem;
         })
