@@ -1,10 +1,14 @@
-import { WorkItemType } from './work-item-type';
-import { AreaModel } from './area.model';
-import { Comments, Comment } from './comment';
+import {
+  WorkItemType,
+  WorkItemTypeUI
+} from './work-item-type';
+import { AreaModel, AreaUI } from './area.model';
+import { Comments, Comment, CommentUI } from './comment';
 import { Link } from './link';
 import { User } from 'ngx-login-client';
-import { IterationModel } from './iteration.model';
-import { LabelModel } from './label.model';
+import { IterationModel, IterationUI } from './iteration.model';
+import { LabelModel, LabelUI } from './label.model';
+import { UserUI } from './user';
 
 export class WorkItem {
   hasChildren?: boolean;
@@ -85,4 +89,19 @@ export class LinkDict {
   linkName: any;
   links: Link[];
   count: number;
+}
+
+
+export interface WorkItemUI {
+  id: string;
+  title: string;
+  number: string;
+  type: WorkItemTypeUI;
+  area: AreaUI;
+  iteration: IterationUI;
+  assignees: UserUI[];
+  creator: UserUI;
+  createdAt: string;
+  labels: LabelUI[];
+  comments: CommentUI[];
 }

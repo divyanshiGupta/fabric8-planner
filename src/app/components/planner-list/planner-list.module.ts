@@ -1,5 +1,3 @@
-import { WorkItemDataService } from './../../services/work-item-data.service';
-import { EventService } from './../../services/event.service';
 import { NgModule }         from '@angular/core';
 import { CommonModule }     from '@angular/common';
 
@@ -53,6 +51,15 @@ import { LabelService } from '../../services/label.service';
 import { AssigneesModule } from './../assignee/assignee.module';
 import { WorkItemCellComponent } from '../work-item-cell/work-item-cell.component';
 import { CookieService } from '../../services/cookie.service';
+import { WorkItemDataService } from './../../services/work-item-data.service';
+import { EventService } from './../../services/event.service';
+
+// ngrx stuff
+import { StoreModule } from '@ngrx/store';
+import { EffectsModule } from '@ngrx/effects';
+import * as states from './../../states/index.state';
+import * as reducers from './../../reducers/index.reducer';
+import * as effects from './../../effects/index.effects';
 
 let providers = [];
 
@@ -122,7 +129,29 @@ if (process.env.ENV == 'inmemory') {
     WorkItemQuickAddModule,
     WorkItemDetailAddTypeSelectorModule,
     PlannerModalModule,
-    NgxDatatableModule
+    NgxDatatableModule,
+    StoreModule.forFeature('listPage', {
+        iterations: reducers.iterationReducer,
+        labels: reducers.LabelReducer,
+        areas: reducers.AreaReducer,
+        collaborators: reducers.CollaboratorReducer,
+        workItems: reducers.WorkItemReducer
+      }, {
+      initialState: {
+        iterations: states.initialIterationState,
+        labels: states.initialLabelState,
+        areas: states.initialAreaState,
+        collaborators: states.initialCollaboratorState,
+        workItems: states.initialWorkItemState
+      }
+    }),
+    EffectsModule.forFeature([
+      effects.IterationEffects,
+      effects.LabelEffects,
+      effects.AreaEffects,
+      effects.CollaboratorEffects,
+      effects.WorkItemEffects
+    ])
   ],
   declarations: [
     PlannerListComponent,

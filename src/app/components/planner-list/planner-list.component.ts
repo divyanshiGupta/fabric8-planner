@@ -1,3 +1,4 @@
+
 import { EventService } from './../../services/event.service';
 import { AreaModel } from '../../models/area.model';
 import { AreaService } from '../../services/area.service';
@@ -63,6 +64,15 @@ import { UrlService } from './../../services/url.service';
 import { CookieService } from './../../services/cookie.service';
 import { WorkItemDetailAddTypeSelectorComponent } from './../work-item-create/work-item-create.component';
 import { setTimeout } from 'core-js/library/web/timers';
+
+// ngrx stuff
+import { Store } from '@ngrx/store';
+import { AppState } from './../../states/app.state';
+import * as IterationActions from './../../actions/iteration.actions';
+import * as LabelActions from './../../actions/label.actions';
+import * as AreaActions from './../../actions/area.actions';
+import * as CollaboratorActions from './../../actions/collaborator.actions';
+import * as WorkItemActions from './../../actions/work-item.actions';
 
 @Component({
   encapsulation: ViewEncapsulation.None,
@@ -160,9 +170,19 @@ export class PlannerListComponent implements OnInit, AfterViewChecked, OnDestroy
     private spaces: Spaces,
     private userService: UserService,
     private urlService: UrlService,
-    private renderer: Renderer2) { }
+    private renderer: Renderer2,
+    private store: Store<AppState>) {}
 
   ngOnInit(): void {
+
+    this.store.subscribe((val) => {
+      console.log('####-1', val);
+    })
+
+    this.store.dispatch(new IterationActions.Get());
+    this.store.dispatch(new LabelActions.Get());
+    this.store.dispatch(new AreaActions.Get());
+    this.store.dispatch(new CollaboratorActions.Get());
     // If there is an iteration on the URL
     // Setting the value to currentIteration
     // BehaviorSubject so that we can compare

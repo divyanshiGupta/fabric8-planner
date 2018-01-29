@@ -1,0 +1,31 @@
+<div class="f8-itr-entry"
+  [routerLinkActive]="'f8-itr-entry--selected'"
+  [attr.data-id]="iteration.id">
+  <div class="f8-itr__header">
+    <div class="truncate padding-right-15"
+      [routerLink]="[]"
+      [queryParams]="{q: constructURL(iteration.id)}"
+      (click)="setGuidedTypeWI(collection)">
+      <span class="f8-itr-name truncate">
+        {{iteration.name | truncate : 45 }}
+      </span>
+      <span
+        *ngIf="iteration.isActive"
+        class="active-tag">
+          [Active]
+      </span>
+    </div>
+    <div class="f8-itr-status">
+      <span>
+        {{iteration.startAt ? (iteration.startAt | date:longDate) : 'Set start date'}}
+        -
+        {{iteration.endAt ? (iteration.endAt | date:longDate) : 'Set end date'}}
+      </span>
+      <span class="iteration-count pull-right">
+        {{iteration.workItemClosedCount}}
+        /{{iteration.workItemTotalCount}}
+      </span>
+    </div>
+  </div>
+</div>
+
