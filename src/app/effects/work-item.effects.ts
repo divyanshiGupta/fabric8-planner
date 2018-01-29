@@ -25,5 +25,25 @@ export class WorkItemEffects {
         .subscribe(workItems => {
           this.store.dispatch(new WorkItemActions.GetSuccess(workItems));
         })
-    })
+  })
+  
+  @Effect() addWorkItems$ = this.actions$
+    .ofType<WorkItemActions.Add>(WorkItemActions.ADD)
+    .map(action => action.payload)
+    .do(payload => {
+      this.workItemService.create(payload)
+        .subscribe(workItem => {
+          this.store.dispatch(new WorkItemActions.AddSuccess(workItem));
+        })
+  })
+
+  @Effect() updateWorkItem$ = this.actions$
+    .ofType<WorkItemActions.Update>(WorkItemActions.UPDATE)
+    .map(action => action.payload)
+    .do(payload => {
+      this.workItemService.update(payload)
+        .subscribe(workItem => {
+          this.store.dispatch(new WorkItemActions.UpdateSuccess(workItem));
+        })
+  })
 }
