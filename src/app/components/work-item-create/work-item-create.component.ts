@@ -1,21 +1,18 @@
-import { WorkItemDetailAddTypeSelectorWidgetComponent } from './work-item-create-selector/work-item-create-selector.component';
+import { Subscription } from 'rxjs/Subscription';
+import { cloneDeep, trimEnd } from 'lodash';
+
 import { Component, OnInit, Input, OnChanges, ViewChild } from '@angular/core';
 import { Router, ActivatedRoute, NavigationExtras } from '@angular/router';
 
-import { cloneDeep, trimEnd } from 'lodash';
 import { Broadcaster } from 'ngx-base';
+import { AlmArrayFilter } from 'ngx-widgets';
 import { AuthenticationService } from 'ngx-login-client';
-import { Subscription } from 'rxjs/Subscription';
 import { Space, Spaces } from 'ngx-fabric8-wit';
 
+import { WorkItemDetailAddTypeSelectorWidgetComponent } from './work-item-create-selector/work-item-create-selector.component';
 import { WorkItemService } from '../../services/work-item.service';
-import { WorkItemListEntryComponent } from '../work-item-list-entry/work-item-list-entry.component';
 import { WorkItemType } from '../../models/work-item-type';
 import { WorkItem } from '../../models/work-item';
-
-import {
-  AlmArrayFilter
-} from 'ngx-widgets';
 
 @Component({
   selector: 'detail-add-type-selector',
@@ -32,7 +29,9 @@ export class WorkItemDetailAddTypeSelectorComponent implements OnInit, OnChanges
   loggedIn: boolean = false;
   workItemTypes: WorkItemType[] = [];
   spaceSubscription: Subscription = null;
-
+  selectedIterationId: string;
+  selectedAreaId: string;
+  
   constructor(
     private router: Router,
     private route: ActivatedRoute,
@@ -73,15 +72,16 @@ export class WorkItemDetailAddTypeSelectorComponent implements OnInit, OnChanges
     }
   }
 
-  showTypes() {
-    this.workItemDetailAddTypeSelectorWidget.open();
-  }
-
   closePanel() {
     this.workItemDetailAddTypeSelectorWidget.close();
   }
 
-  openPanel() {
+  // optional, we can supply context area and iteration that is
+  // appended to the next url to be consumed by the create dialog
+  // for pre-selecting values.
+  openPanel(iterationId?: string, areaId?: string) {
+    this.selectedIterationId = iterationId;
+    this.selectedAreaId = areaId;
     this.workItemDetailAddTypeSelectorWidget.open();
   }
 
@@ -92,6 +92,8 @@ export class WorkItemDetailAddTypeSelectorComponent implements OnInit, OnChanges
         this.router.url.split('plan')[0], '/')
         + '/plan/detail/new?type='
         + type.id
-    );
+        + (this.selectedIterationId?'&iteration='+this.selectedIterationId:'')
+        + (this.selectedAreaId?'&area='+this.selectedAreaId:'')
+      );
   }
 }

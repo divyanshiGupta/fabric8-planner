@@ -13,7 +13,9 @@ import {
   QueryList,
   TemplateRef,
   DoCheck,
-  ViewEncapsulation
+  ViewEncapsulation,
+  Renderer2,
+  AfterViewChecked
 } from '@angular/core';
 import { Response } from '@angular/http';
 import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
@@ -39,6 +41,10 @@ import { WorkItemType } from '../../models/work-item-type';
 import { WorkItemService } from '../../services/work-item.service';
 import { WorkItemDataService } from './../../services/work-item-data.service';
 import { CollaboratorService } from '../../services/collaborator.service';
+import { LabelService } from '../../services/label.service';
+import { LabelModel } from '../../models/label.model';
+import { GroupTypesService } from '../../services/group-types.service';
+import { GroupTypesModel } from '../../models/group-types.model';
 
 @Component({
   // tslint:disable-next-line:use-host-property-decorator
@@ -47,12 +53,15 @@ import { CollaboratorService } from '../../services/collaborator.service';
   styleUrls: ['./planner-board.component.less']
 })
 
-export class PlannerBoardComponent implements OnInit, OnDestroy {
+export class PlannerBoardComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   @ViewChildren('activeFilters', {read: ElementRef}) activeFiltersRef: QueryList<ElementRef>;
   @ViewChild('activeFiltersDiv') activeFiltersDiv: any;
   @ViewChild('associateIterationModal') associateIterationModal: any;
-
+  @ViewChild('sidePanel') sidePanelRef: any;
+  @ViewChild('toolbarHeight') toolbarHeight: ElementRef;
+  @ViewChild('boardContainer') boardContainer: any;
+  @ViewChild('containerHeight') containerHeight: ElementRef;
   workItem: WorkItem;
   cardItem: CardValue;
   filters: any[] = [];
@@ -67,20 +76,29 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
   private workItemTypes: WorkItemType[] = [];
   private readyToInit = false;
   private areas: AreaModel[] = [];
-  private loggedInUser: User;
+  private loggedInUser: any[];
   eventListeners: any[] = [];
   dialog: Dialog;
   showDialog = false;
   dragulaEventListeners: any[] = [];
   private allowedFilterParams: string[] = ['iteration'];
   private urlListener = null;
-  private currentBoardType: WorkItemType | Object = {};
   private currentIteration: BehaviorSubject<string | null>;
   private currentWIType: BehaviorSubject<string | null>;
   private existingQueryParams: Object = {};
+  private quickAddContext: string[] = [];
+  private initialGroup = [];
   private wiSubscription = null;
   lane: any;
+  private labels: LabelModel[] = [];
+  private uiLockedAll = false;
+  private uiLockedBoard = true;
+  private uiLockedSidebar = false;
+  private currentSpace: Space;
+  private included: WorkItem[];
+  groupTypes: GroupTypesModel[] = [];
 
+  sidePanelOpen: boolean = true;
   constructor(
     private auth: AuthenticationService,
     private broadcaster: Broadcaster,
@@ -88,15 +106,18 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
     private notifications: Notifications,
     private router: Router,
     private workItemService: WorkItemService,
+    private groupTypesService: GroupTypesService,
     private workItemDataService: WorkItemDataService,
     private dragulaService: DragulaService,
     private iterationService: IterationService,
+    private labelService: LabelService,
     private userService: UserService,
     private urlService: UrlService,
     private spaces: Spaces,
     private areaService: AreaService,
     private filterService: FilterService,
-    private route: ActivatedRoute) {
+    private route: ActivatedRoute,
+    private renderer: Renderer2) {
       let bag: any = this.dragulaService.find('wi-bag');
       this.dragulaEventListeners.push(
         this.dragulaService.drag.subscribe((value) => {
@@ -154,8 +175,34 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
         this.workItemTypes = [];
       }
     });
+
+    this.filterService.getFilters().subscribe(filters =>
+      filters.forEach(f => this.filters.push(f.attributes.key))
+    );
+
   }
 
+  ngAfterViewChecked() {
+    if(this.toolbarHeight) {
+      let toolbarHt:any =  this.toolbarHeight.nativeElement.offsetHeight;
+      let hdrHeight;
+      if(document.getElementsByClassName('navbar-pf').length > 0) {
+        hdrHeight = (document.getElementsByClassName('navbar-pf')[0] as HTMLElement).offsetHeight;
+      }
+      let expHeight: number = 0;
+      if(document.getElementsByClassName('experimental-bar').length > 0) {
+        expHeight = (document.getElementsByClassName('experimental-bar')[0] as HTMLElement).offsetHeight;
+      }
+      let targetHeight:any = window.innerHeight - toolbarHt - hdrHeight - expHeight ;
+      this.renderer.setStyle(this.boardContainer.nativeElement, 'height', targetHeight + "px");
+
+      let targetContHeight:number = window.innerHeight - hdrHeight - expHeight;
+      this.renderer.setStyle(this.containerHeight.nativeElement, 'height', targetContHeight + "px");
+      if(document.getElementsByTagName('body')) {
+        document.getElementsByTagName('body')[0].style.overflow = "hidden";
+      }
+    }
+  }
   ngOnDestroy() {
     console.log('Destroying all the listeners in board component');
     if (this.wiSubscription !== null) this.wiSubscription.unsubscribe();
@@ -165,31 +212,36 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
       this.urlListener.unsubscribe();
       this.urlListener = null;
     }
+    document.getElementsByTagName('body')[0].style.overflow = "auto";
   }
 
   initStuff() {
+    this.uiLockedBoard = true;
     Observable.combineLatest(
       this.iterationService.getIterations(),
       // this.collaboratorService.getCollaborators(),
       this.workItemService.getWorkItemTypes(),
       this.areaService.getAreas(),
+      this.labelService.getLabels(),
       this.userService.getUser().catch(err => Observable.of({} as User)),
       this.currentIteration,
-      this.currentWIType
+      this.groupTypesService.getGroupTypes()
     )
-    .subscribe(([iterations, wiTypes, areas, loggedInUser, currentIteration, currentWIType]) => {
+    .subscribe(([iterations, wiTypes, areas, labels, loggedInUser, currentIteration, groupTypes]) => {
       this.iterations = iterations;
       this.workItemTypes = wiTypes;
       this.readyToInit = true;
       this.areas = areas;
+      this.labels = labels;
       this.loggedInUser = loggedInUser;
+      this.groupTypes = groupTypes;
       // Resolve iteration filter on the first load of board view
       // If there is an existing iteration query params already
       // Set the filter service with iteration filter
       if (currentIteration !== null) {
         const filterIteration = this.iterations.find(it => {
           return it.attributes.resolved_parent_path + '/' + it.attributes.name ===
-            currentIteration;
+            currentIteration.toString();
         })
         if (filterIteration) {
            this.filterService.setFilterValues('iteration', filterIteration.id);
@@ -199,40 +251,36 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
       }
 
       // Set lanes
-      // If wi type is there in the URL queryPrams
-      if (currentWIType !== null) {
-        const type = this.workItemTypes.find(
-          t => t.attributes['name'] === this.route.snapshot.queryParams['workitemtype']
-        );
-        if (type) {
-          this.getDefaultWorkItemTypeStates(type.id);
-        } else {
-          this.getDefaultWorkItemTypeStates();
-        }
-      }
-      // Else do with the default type
-      else {
-        this.getDefaultWorkItemTypeStates();
-      }
+      this.prepareLanes();
+      this.uiLockedBoard = false;
     });
   }
 
-  getWorkItems(pageSize, mainLane) {
+  getWorkItems(pageSize, mainLane, payload) {
     let lane = cloneDeep(mainLane);
-    return this.workItemService.getWorkItems(pageSize, [{
-        active: true,
-        paramKey: 'filter[workitemstate]',
-        value: lane.option
-      }, ...this.filterService.getAppliedFilters()])
+
+    let exp = {
+      expression: this.filterService.queryJoiner(
+        cloneDeep(payload.expression),
+        this.filterService.and_notation,
+        this.filterService.queryBuilder(
+          'state', this.filterService.equal_notation, lane.option
+        )
+    )}
+
+    return this.workItemService.getWorkItems2(pageSize, exp)
     .map(workItemResp => {
       let workItems = workItemResp.workItems;
+      this.included = workItemResp.included;
       let cardValue: CardValue[] = [];
       this.workItemDataService.setItems(workItems);
       lane.workItems = this.workItemService.resolveWorkItems(
         workItems,
         this.iterations,
         [],
-        this.workItemTypes
+        this.workItemTypes,
+        this.labels,
+        this.included
       );
       lane.cardValue = lane.workItems.map(item => {
         return {
@@ -258,7 +306,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
             extraData: {
               selfLink: item.links.self,
               version: item.attributes['version'],
-              UUID: item.id
+              UUID: item.id,
+              labels: item.relationships.labels.data
             }
         }
       });
@@ -275,7 +324,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
       workItems,
       this.iterations,
       [],
-      this.workItemTypes
+      this.workItemTypes,
+      this.labels
     );
     for(let i=0; i<workItems.length; i++) {
       lane = this.lanes.find((lane) => lane.option === workItems[i].attributes['system.state']);
@@ -284,11 +334,11 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
         type: workItems[i].relationships.baseType.data.attributes['icon'],
         title: workItems[i].attributes['system.title'],
         avatar: (() => {
-                if(workItems[i].relationships.assignees.data.length > 0)
+                if(workItems[i].relationships.assignees.data)
                   return workItems[i].relationships.assignees.data[0].attributes['imageURL'];
                 else return '';})(),
         hasLink: true,
-        link: "./detail/"+workItems[i].id,
+        link: "./../detail/"+workItems[i].attributes['system.number'],
         menuItem: [{
           id: 'card_associate_iteration',
           value: 'Associate with iteration...'
@@ -296,7 +346,7 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
         {
           id: 'card_open',
           value: 'Open',
-          link: "./detail/"+workItems[i].id
+          link: "./../detail/"+workItems[i].attributes['system.number']
         },
         {
           id: 'card_move_to_backlog',
@@ -305,7 +355,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
         extraData: {
           selfLink: workItems[i].links.self,
           version: workItems[i].attributes['version'],
-          UUID: workItems[i].id
+          UUID: workItems[i].id,
+          labels: workItems[i].relationships.labels.data
         }
       });
       lane.cardValue = [...cardValues, ...lane.cardValue];
@@ -381,41 +432,16 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
     });
   }
 
-  getDefaultWorkItemTypeStates(workItemTypeId?: string) {
+  prepareLanes() {
     this.lanes = [];
-    // In case no type is selected set the first one as default
-    if (!workItemTypeId) {
-      if (this.workItemTypes.length) {
-        this.currentBoardType = this.workItemTypes[0];
-        let lanes = this.workItemTypes[0].attributes.fields['system.state'].type.values;
-        lanes.forEach((value, index) => {
-          this.lanes.push({
-            option: value,
-            workItems: [] as WorkItem[],
-            nextLink: null
-          });
-        });
-        this.filterService.setFilterValues('workitemtype', this.workItemTypes[0].id);
-      }
-    }
-    else {
-      // we have a type id, we just fetch the states from it.
-      let witype = this.workItemTypes.find(type => type.id === workItemTypeId);
-      if (witype) {
-        this.currentBoardType = witype;
-        let lanes = witype.attributes.fields['system.state'].type.values;
-        lanes.forEach((value, index) => {
-          this.lanes.push({
-            option: value,
-            workItems: [] as WorkItem[],
-            nextLink: null
-          });
-        });
-        this.filterService.setFilterValues('workitemtype', witype.id);
-      } else {
-        this.getDefaultWorkItemTypeStates();
-      }
-    }
+    let lanes = ['new', 'open', 'in progress', 'resolved', 'closed'];
+    lanes.forEach((value, index) => {
+      this.lanes.push({
+        option: value,
+        workItems: [] as WorkItem[],
+        nextLink: null
+      });
+    });
   }
 
   /**
@@ -451,7 +477,9 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
               workItemResp.workItems,
               this.iterations,
               [],
-              this.workItemTypes
+              this.workItemTypes,
+              this.labels,
+              workItemResp.included
           )];
           lane.cardValue = [
             ...lane.cardValue,
@@ -462,7 +490,7 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
                 title: item.attributes['system.title'],
                 avatar: '',
                 hasLink: true,
-                link: "./detail/"+item.id,
+                link: "./../detail/"+item.attributes['system.number'],
                 menuItem: [{
                   id: 'card_associate_iteration',
                   value: 'Associate with iteration...'
@@ -470,7 +498,7 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
                 {
                   id: 'card_open',
                   value: 'Open',
-                  link: "./detail/"+item.id
+                  link: "./../detail/"+item.attributes['system.number']
                 },
                 {
                   id: 'card_move_to_backlog',
@@ -479,7 +507,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
                 extraData: {
                   selfLink: item.links.self,
                   version: item.attributes['version'],
-                  UUID: item.id
+                  UUID: item.id,
+                  labels: item.relationships.labels.data
                 }
               }
             })
@@ -533,7 +562,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
       [workItem],
       this.iterations,
       [],
-      this.workItemTypes
+      this.workItemTypes,
+      this.labels
     );
 
     let lane = this.lanes.find((lane) => lane.option === workItem.attributes['system.state']);
@@ -748,13 +778,59 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
     );
 
     this.eventListeners.push(
-      this.filterService.filterChange.subscribe(filters => {
+      Observable.combineLatest(
+        this.filterService.filterChange,
+        this.route.queryParams
+      ).subscribe(([filters, params]) => {
         if (this.wiSubscription !== null) {
           this.wiSubscription.unsubscribe();
         }
-        this.wiSubscription = Observable.forkJoin(
-          this.lanes.map(lane => this.getWorkItems(this.pageSize, lane))
-        )
+
+        this.wiSubscription =
+        this.spaces.current.switchMap(space => {
+          let appliedFilters = this.filterService.getAppliedFilters(true);
+          // remove the filter item from the filters
+          for (let f=0; f<appliedFilters.length; f++) {
+            if (appliedFilters[f].paramKey=='filter[parentexists]') {
+              appliedFilters.splice(f, 1);
+            }
+          }
+          // TODO Filter temp
+          // Take all the applied filters and prepare an object to make the query string
+          let newFilterObj = {};
+          appliedFilters.forEach(item => {
+            newFilterObj[item.id] = item.value;
+          });
+
+          let payload = {};
+          if (this.route.snapshot.queryParams['q']) {
+            let urlString = this.route.snapshot.queryParams['q']
+              .replace(' ','')
+              .replace('$AND',' ')
+              .replace('$OR',' ')
+              .replace('(','')
+              .replace(')','');
+            let temp_arr = urlString.split(' ');
+            for(let i = 0; i < temp_arr.length; i++) {
+              let arr = temp_arr[i].split(':')
+              //check if it belongs in filter array
+              if (this.filters.indexOf(arr[0]) < 0 && arr[1] !== undefined)
+                newFilterObj[arr[0]] = arr[1];
+            }
+            let exp = this.filterService.queryToJson(this.filterService.constructQueryURL('', newFilterObj));
+            Object.assign(payload, {
+              expression: exp
+            });
+          } else {
+            let exp = this.filterService.queryToJson(this.filterService.constructQueryURL('', newFilterObj));
+            Object.assign(payload, {
+              expression: exp
+            });
+          }
+          return Observable.forkJoin(
+            this.lanes.map(lane => this.getWorkItems(this.pageSize, lane, payload))
+          )
+        })
         .take(1)
         .map(finalLanes => {
           let usersToFetch = [];
@@ -801,8 +877,8 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
 
     this.eventListeners.push(
       this.workItemService.addWIObservable.subscribe(item => {
-        if(this.filterService.doesMatchCurrentFilter(item)) {
-          this.onCreateWorkItem(item);
+        if(this.filterService.doesMatchCurrentFilter(item.wi)) {
+          this.onCreateWorkItem(item.wi);
         }
       })
     );
@@ -857,6 +933,46 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
           }
         )
     );
+
+    // lock the ui when a complex query is starting in the background
+    this.eventListeners.push(
+      this.broadcaster.on<string>('backend_query_start')
+        .subscribe((context: string) => {
+          switch (context){
+            case 'workitems':
+              this.uiLockedBoard = true;
+              break;
+            case 'iterations':
+              this.uiLockedSidebar = true;
+              break;
+            case 'mixed':
+              this.uiLockedAll = true;
+              break;
+            default:
+              break;
+          }
+      })
+    );
+
+    // unlock the ui when a complex query is completed in the background
+    this.eventListeners.push(
+      this.broadcaster.on<string>('backend_query_end')
+        .subscribe((context: string) => {
+          switch (context){
+            case 'workitems':
+              this.uiLockedBoard = false;
+              break;
+            case 'iterations':
+              this.uiLockedSidebar = false;
+              break;
+            case 'mixed':
+              this.uiLockedAll = false;
+              break;
+            default:
+              break;
+          }
+      })
+    );
   }
 
   listenToUrlParams() {
@@ -881,5 +997,19 @@ export class PlannerBoardComponent implements OnInit, OnDestroy {
           this.currentWIType.next(null);
         }
       });
+  }
+
+  togglePanelState(event: any): void {
+    if (event === 'out') {
+      setTimeout(() => {
+        this.sidePanelOpen = true;
+      }, 200)
+    } else {
+      this.sidePanelOpen = false;
+    }
+  }
+
+  togglePanel() {
+    this.sidePanelRef.toggleSidePanel();
   }
 }

@@ -13,6 +13,8 @@ import { FilterMockGenerator } from './mock-data/filter-mock-generator';
 import { SpaceMockGenerator } from './mock-data/space-mock-generator';
 import { AreaMockGenerator } from './mock-data/area-mock-generator';
 import { IterationMockGenerator } from './mock-data/iteration-mock-generator';
+import { LabelMockGenerator } from './mock-data/label-mock-generator';
+import { GroupTypesMockGenerator } from './mock-data/group-types-mock-generator';
 
 /*
   This class provides a mock database store for entities. It provides
@@ -44,6 +46,8 @@ export class MockDataService {
   private spaceMockGenerator: SpaceMockGenerator = new SpaceMockGenerator();
   private iterationMockGenerator: IterationMockGenerator = new IterationMockGenerator();
   private areaMockGenerator: AreaMockGenerator = new AreaMockGenerator();
+  private labelMockGenerator: LabelMockGenerator = new LabelMockGenerator();
+  private groupTypesMockGenerator: GroupTypesMockGenerator = new GroupTypesMockGenerator();
 
   // persistence store, the MockDataService is a singleton when injected as a service.
   private workItems: any[];
@@ -53,6 +57,8 @@ export class MockDataService {
   private spaces: any[];
   private iterations: any[];
   private areas: any[];
+  private labels: any[];
+  private groupTypes: any[];
 
   private selfId;
 
@@ -66,6 +72,8 @@ export class MockDataService {
     this.spaces = this.spaceMockGenerator.createSpaces();
     this.iterations = this.iterationMockGenerator.createIterations();
     this.areas = this.areaMockGenerator.createAreas();
+    this.labels = this.labelMockGenerator.getAllLabels();
+    this.groupTypes = this.groupTypesMockGenerator.createGroupTypes();
 
     this.selfId = this.createId();
     console.log('Started MockDataService service instance ' + this.selfId);
@@ -91,16 +99,20 @@ export class MockDataService {
   // work items and dependend entities (comments, ..)
 
   /* Filter the workitems */
-  public getWorkItemsFiltered(pathParams: any): any {
+  public  getWorkItemsFiltered(pathParams: any): any {
 
     let assigneeFilter = pathParams['filter[assignee]'];
+    let creatorFilter = pathParams['filter[creator]'];
+    let areaFilter = pathParams['filter[area]'];
     let workItemTypeFilter = pathParams['filter[workitemtype]'];
-    let workItemStateFilter = pathParams['filter[workitemstate]'];
+    let workItemStateFilter = pathParams['filter[state]'];
     let iterationFilter = pathParams['filter[iteration]'];
     let hasParentFilter = pathParams['filter[parentexists]'];
 
     console.log('Filtering on: '
       + (assigneeFilter ? 'assignee==' + assigneeFilter + ' ' : '')
+      + (creatorFilter ? 'creator==' + creatorFilter + ' ' : '')
+      + (areaFilter ? 'area==' + areaFilter + '' : '')
       + (workItemTypeFilter ? 'workitemtype==' + workItemTypeFilter + ' ' : '')
       + (workItemStateFilter ? 'state==' + workItemStateFilter + ' ' : '')
       + (iterationFilter ? 'iteration==' + iterationFilter + ' ' : '')
@@ -114,6 +126,10 @@ export class MockDataService {
       let filterMatches: boolean = true;
       if (assigneeFilter)
         filterMatches = filterMatches && (this.workItems[i].relationships.assignees.data && this.workItems[i].relationships.assignees.data[0].id === assigneeFilter);
+      if (creatorFilter)
+        filterMatches = filterMatches && (this.workItems[i].relationships.creator.data && this.workItems[i].relationships.creator.data.id === creatorFilter);
+      if (areaFilter)
+        filterMatches = filterMatches && (this.workItems[i].relationships.area.data && this.workItems[i].relationships.area.data.id === areaFilter);
       if (workItemTypeFilter)
         filterMatches = filterMatches && (this.workItems[i].relationships.baseType.data.id === workItemTypeFilter);
       if (workItemStateFilter)
@@ -241,6 +257,9 @@ export class MockDataService {
               'type': 'areas'
             }
            },
+          'labels': localWorkItem.relationships.labels ? {
+            'data': localWorkItem.relationships.labels.data
+            } : {},
           'baseType': {
             'data': {
               'id': '86af5178-9b41-469b-9096-57e5155c3f31',
@@ -263,6 +282,14 @@ export class MockDataService {
               'type': 'identities'
             }
           },
+          'children': {
+            'links': {
+              'related': 'http://mock.service/api/workitems/id' + localWorkItem.id + '/childs'
+            },
+            'meta': {
+              'hasChildren': false, // the first two work items will have childs
+            }
+          }
         };
     if (entity.data.relationships.baseType.data) {
       // existing type on entity
@@ -281,6 +308,8 @@ export class MockDataService {
       if (subselect === 'comments') {
         console.log('Requested comments for workitem ' + wiId);
         return this.makeCopy(this.workItemComments[wiId]);
+      } else if (subselect === 'labels') {
+        // bad me karenge
       } else if (subselect === 'relationships') {
         console.log('Request for relationships for workitem ' + wiId);
         if (parts[2] === 'links') {
@@ -340,8 +369,18 @@ export class MockDataService {
               this.workItems[i].relationships.assignees = {};
             }
           }
+          // Label update
+          if (workItem.relationships.labels && workItem.relationships.labels.data) {
+            if (workItem.relationships.labels.data.length) {
+              this.workItems[i].relationships.labels.data = workItem.relationships.labels.data;
+            } else {
+              this.workItems[i].relationships.labels.data = [];
+            }
+          }
         } else {
           Object.assign(this.workItems[i].attributes, localWorkItem.attributes);
+          // Description update
+          this.workItems[i].attributes['system.description.rendered'] = workItem.attributes['system.description'];
         }
         return cloneDeep(this.workItems[i]);
       }
@@ -432,6 +471,14 @@ export class MockDataService {
     return this.userMockGenerator.getAllUsers();
   }
 
+  public getAllLabels(): any {
+    return this.labelMockGenerator.getAllLabels();
+  }
+
+  public createLabel(body): any {
+    return this.labelMockGenerator.createLabel(body);
+  }
+
   public getLoginStatus() {
     return {
       'status': 200,
@@ -505,9 +552,14 @@ export class MockDataService {
     console.log('CREATE ITERATION');
     console.log(iteration);
     var localIteration = this.makeCopy(iteration.data);
-    localIteration.id = this.createId();
+    localIteration.id = 'iteration-id-' + this.createId();
     if (!localIteration.attributes.hasOwnProperty('state') && !localIteration.attributes.state) {
       localIteration.attributes['state'] = 'new';
+    }
+    if (localIteration.attributes['user_active'] === true) {
+      localIteration.attributes['active_status'] = true;
+    } else {
+      localIteration.attributes['active_status'] = false;
     }
     if (parentIterationId) {
       var parentIteration = this.getIteration(parentIterationId);
@@ -545,6 +597,11 @@ export class MockDataService {
         if (!localIteration.attributes.hasOwnProperty('state') || !localIteration.attributes.state) {
           localIteration.attributes['state'] = this.iterations[i].attributes['state'];
         }
+        if (localIteration.attributes['user_active'] === true) {
+          localIteration.attributes['active_status'] = true;
+        } else {
+          localIteration.attributes['active_status'] = false;
+        }
         this.iterations.splice(i, 1, localIteration);
         return this.makeCopy(localIteration);
       }
@@ -557,6 +614,21 @@ export class MockDataService {
         this.iterations.splice(i, 1);
         return true;
       }
+    return false;
+  }
+
+  // comments
+  public deleteComment(id: string): boolean {
+    Object.getOwnPropertyNames(this.workItemComments).map((key: string) => {
+      let thisCommentEntry = this.workItemComments[key];
+      for (var j = 0; j < thisCommentEntry.data.length; j++) {
+        if (thisCommentEntry.data[j].id === id) {
+          thisCommentEntry.data.splice(j, 1);
+          delete this.workItemComments[key];
+          return true;
+        }
+      }
+    });
     return false;
   }
 
@@ -576,5 +648,9 @@ export class MockDataService {
 
   public getRedneredText(data: any): any {
     return this.schemaMockGenerator.renderText(data.attributes.content);
+  }
+
+  public getAllGroupTypes(): any {
+    return this.groupTypes;
   }
 }

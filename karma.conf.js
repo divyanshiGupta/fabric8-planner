@@ -5,13 +5,11 @@ module.exports = function(config) {
 
         files: [
             { pattern: "src/base.spec.ts" },
-            { pattern: "src/app/mock/**/*.+(ts|html)" },
-            { pattern: "src/app/pipes/**/*.+(ts|html)" },
-            { pattern: "src/app/services/**/*.+(ts|html)" }
+            { pattern: "src/app/**/*.+(ts|html)" },
         ],
 
         plugins: [
-            'karma-phantomjs-launcher',
+            'karma-chrome-launcher',
             'karma-jasmine',
             'karma-typescript',
             'karma-coverage',
@@ -44,7 +42,6 @@ module.exports = function(config) {
             },
             exclude: [
                 'dist',
-                'dist-watch',
                 'node_modules',
                 'runtime', // explicitly exclude the runtime here
                 'src/app/mock/standalone/sso-api.provider.ts', // this class produces some errors when compiled in test mode
@@ -52,11 +49,18 @@ module.exports = function(config) {
                 'src/app/services/login.service.ts' // this requires some dependency from runtime, so exclude it
             ]
         },
-
-        reporters: ['progress', 'karma-typescript', 'mocha'],
-
-        browsers: ['PhantomJS'],
-
+        reporters: ['progress', 'karma-typescript', 'coverage'],
+        coverageReporter: {
+            reporters: [{type: 'lcov'}]
+        },
+        // See https://github.com/karma-runner/karma-chrome-launcher/issues/158#issuecomment-339265457
+        browsers: ['ChromeHeadlessNoSandbox'],
+        customLaunchers: {
+          ChromeHeadlessNoSandbox: {
+            base: 'ChromeHeadless',
+            flags: ['--no-sandbox']
+          }
+        },
         singleRun: true
 
     });

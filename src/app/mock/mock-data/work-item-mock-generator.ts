@@ -171,12 +171,13 @@ export class WorkItemMockGenerator {
         },
         'relationships': {
           'assignees': { },
+          'labels': (n==0) ? { "data": [{"id": "label1","type": "labels"}], "links": {"related": "http://mock.service/api/workitems/id"+n+"/labels"}} : {},
           'iteration': (n % 2) ? { 'data': { 'id': 'iteration-id1', 'links': { 'self': 'http://mock.service/api/iterations/iteration-id1' }, 'type': 'iterations' }} : { 'data': { 'id': 'iteration-id0', 'links': { 'self': 'http://mock.service/api/iterations/iteration-id0' }, 'type': 'iterations' }},
           'area': {
             'data': {
-              'id': 'rootarea',
+              'id': 'area-id' + (n % 2),
               'links': {
-                'self': 'http://mock.service/api/areas/rootarea'
+                'self': 'http://mock.service/api/areas/area-id' + (n % 2)
               },
               'type': 'areas'
             }
@@ -193,6 +194,18 @@ export class WorkItemMockGenerator {
               'self': 'http://mock.service/api/workitems/id' + n + '/relationships/comments'
             }
           },
+          'parent':
+          (n === 5 || n === 6 || n === 7) ? {
+            'data': {
+              'id': 'id0',
+              'type': 'workitems'
+            }
+          } : (n === 8 || n === 9 || n === 10) ? {
+            'data': {
+              'id': 'id0',
+              'type': 'workitems'
+            }
+          } : {},
           'children': {
             'links': {
               'related': 'http://mock.service/api/workitems/id' + n + '/childs'

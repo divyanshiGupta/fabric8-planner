@@ -23,8 +23,11 @@
     background-color: @color-pf-white;
     box-shadow: 0 6px 12px rgba(0, 0, 0, .175);
     background-clip: padding-box;
-    .Border(1px, solid, @color-pf-black-300);
-    .borderRadius(1px);
+    border: 1px solid;
+    border-color: @color-pf-black-300;
+    border-radius: 1px;
+    max-height: 200px;
+    overflow-y: auto;
     li {
       a {
         display: block;
@@ -34,7 +37,9 @@
         color: @color-pf-black-800;
         line-height: 1.67;
         white-space: nowrap;
-        .Border(1px, solid, transparent);
+        cursor: pointer;
+        border: 1px solid;
+        border-color: transparent;
         &:hover { background-image: none; }
         &:active {
           color: @color-pf-white!important;

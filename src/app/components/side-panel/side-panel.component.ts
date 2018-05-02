@@ -4,6 +4,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 
 import { Broadcaster, Logger } from 'ngx-base';
 
+import { GroupTypesModel } from '../../models/group-types.model';
 import { GroupTypesService } from '../../services/group-types.service';
 import { WorkItem } from '../../models/work-item';
 import { WorkItemType } from '../../models/work-item-type';
@@ -18,12 +19,19 @@ import { IterationService } from '../../services/iteration.service';
 export class SidepanelComponent implements OnInit, OnDestroy {
 
   @Input() iterations: IterationModel[] = [];
+  @Input() sidePanelOpen: Boolean = true;
+  @Input('groupTypes') set groupTypesSetup(types: GroupTypesModel[]) {
+    if(JSON.stringify(this.groupTypes) != JSON.stringify(types)) {
+      this.groupTypes = types;
+    }
+  }
 
   rootIteration: IterationModel = null;
   backlogSelected: boolean = true;
   typeGroupSelected: boolean = true;
   numberOfItemsInBacklog: number = 0;
   eventListeners: any[] = [];
+  groupTypes: GroupTypesModel[] = [];
 
   constructor(
     private log: Logger,
@@ -60,6 +68,11 @@ export class SidepanelComponent implements OnInit, OnDestroy {
       this.log.log('Got root iteration size of ' + count);
       this.numberOfItemsInBacklog = count;
     })
+  }
+
+  setGuidedTypeWI() {
+    let witCollection = this.workItemService.workItemTypes.map(wit => wit.id);
+    this.groupTypesService.setCurrentGroupType(witCollection);
   }
 
   listenToEvents() {

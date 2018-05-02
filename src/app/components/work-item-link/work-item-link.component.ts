@@ -4,7 +4,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { Http } from '@angular/http';
 import { cloneDeep, trimEnd } from 'lodash';
 
-import { Broadcaster } from 'ngx-base';
+import { Broadcaster, Notification, NotificationType, Notifications } from 'ngx-base';
 
 import { Link } from '../../models/link';
 import { LinkDict } from '../../models/work-item';
@@ -48,6 +48,7 @@ export class WorkItemLinkComponent implements OnInit, OnChanges, DoCheck, OnDest
     private route: ActivatedRoute,
     private broadcaster: Broadcaster,
     private eventService: EventService,
+    private notifications: Notifications,
     http: Http
   ){}
 
@@ -147,13 +148,24 @@ export class WorkItemLinkComponent implements OnInit, OnChanges, DoCheck, OnDest
       );
     const tempValue = {'data': this.link};
     this.workItemService
-      .createLink(tempValue, this.workItem['id'])
+      .createLink(tempValue)
       .subscribe(([link, includes]) => {
         this.workItemService.addLinkToWorkItem(link, includes, this.workItem);
         this.resetSearchData();
         this.eventService.workItemListReloadOnLink.next(true);
       },
-      (error: any) => console.log(error));
+      (error: any) => {
+        if((error._body).indexOf('single parent in tree topology') >= 0) {
+          try {
+              this.notifications.message({
+              message: 'Work item can only have a single parent.',
+              type: NotificationType.DANGER
+              } as Notification);
+            } catch (e) {
+              console.log(error._body);
+            }
+          }
+      });
   }
 
   // deleteLink(link : Link){
@@ -170,7 +182,7 @@ export class WorkItemLinkComponent implements OnInit, OnChanges, DoCheck, OnDest
 
   loadLinkTypes(): void {
     this.workItemService
-    .getLinkTypes(this.workItem)
+    .getLinkTypes()
       .subscribe((linkTypes: any) => {
         this.linkTypes = cloneDeep(linkTypes);
       },

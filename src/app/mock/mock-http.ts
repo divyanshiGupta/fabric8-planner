@@ -93,8 +93,26 @@ export class MockHttp extends HttpService {
         result['extraPath'] = result.path.replace(/^\/areas\//, '');
         result['path'] = '/areas';
       }
+      if (result.path.indexOf('/comments/') == 0) {
+        result['extraPath'] = result.path.replace(/^\/comments\//, '');
+        result['path'] = '/comments';
+      }
+      if (result.path.indexOf('/workitemtypegroups/') == 0) {
+        result['extraPath'] = result.path.replace(/^\/workitemtypegroups\//, '');
+        result['path'] = '/workitemtypegroups';
+      }
       // if request hat a /space prefix, note the space id, the re-parse the extra path
-      console.log(result.path);
+      if (result.path.indexOf('/spacetemplates/') == 0) {
+        console.log('Space prefix detected, reparsing url..');
+        var spaceId = result.path.split('/')[2];
+        var newUrlBase = url.replace(/\/spacetemplates\/[^\/]+\//, '/');
+        console.log('Reparsing with url ' + newUrlBase);
+        // Recurse to parse sub-path
+        var newResult = this.parseURL(newUrlBase);
+        newResult.params['spaceId'] = spaceId;
+        result = newResult;
+      }
+      // if request hat a /space prefix, note the space id, the re-parse the extra path
       if (result.path.indexOf('/spaces/') == 0) {
         console.log('Space prefix detected, reparsing url..');
         var spaceId = result.path.split('/')[2];
@@ -109,6 +127,7 @@ export class MockHttp extends HttpService {
         result['extraPath'] = result.path.replace(/^\/iterations\//, '');
         result['path'] = '/iterations';
       }
+
       this.logger.log('Parsed request path: ' + JSON.stringify(result));
       return result;
     }
@@ -198,7 +217,7 @@ export class MockHttp extends HttpService {
         case '/workitems':
           if (path.extraPath) {
             return this.createResponse(url.toString(), 200, 'ok', this.mockDataService.getWorkItemOrEntity(path.extraPath) );
-          } else if (path.params['filter[assignee]'] || path.params['filter[workitemtype]'] || path.params['filter[workitemstate]'] || path.params['filter[iteration]'] || path.params['filter[parentexists]']) {
+          } else if (path.params['filter[assignee]'] || path.params['filter[workitemtype]'] || path.params['filter[state]'] || path.params['filter[iteration]'] || path.params['filter[area]'] || path.params['filter[creator]']) {
             this.logger.log('Request contains filter expressions: ' + JSON.stringify(path.params));
             return this.createResponse(url.toString(), 200, 'ok', this.createPage(this.mockDataService.getWorkItemsFiltered(path.params), path.params) );
           } else {
@@ -250,9 +269,13 @@ export class MockHttp extends HttpService {
           }
         case '/workitemlinktypes':
           return this.createResponse(url.toString(), 200, 'ok', this.mockDataService.getWorkItemLinkTypes());
+        case '/labels':
+          return this.createResponse(url.toString(), 200, 'ok', {data: this.mockDataService.getAllLabels()});
+        case '/workitemtypegroups':
+          return this.createResponse(url.toString(), 200, 'ok', {data: this.mockDataService.getAllGroupTypes()});
         default:
           console.log('######## URL Not found ########', url.toString());
-          return this.createResponse(url.toString(), 404, 'npt found', {} );
+          return this.createResponse(url.toString(), 404, 'not found', {} );
       }
     };
 
@@ -288,6 +311,8 @@ export class MockHttp extends HttpService {
         return this.createResponse(url.toString(), 200, 'ok', { data: this.mockDataService.getRedneredText(JSON.parse(body).data) });
       } else if (path.path === '/login/refresh') {
         return this.createResponse(url.toString(), 200, 'ok', { token: { access_token: 'someaccesstoken', refresh_token: 'someaccesstoken' }} );
+      } else if (path.path ===  '/labels') {
+        return this.createResponse(url.toString(), 200, 'ok', { data: this.mockDataService.createLabel(body) } );
       } else {
         return this.createResponse(url.toString(), 500, 'POST to unknown resource: ' + path.path, {});
       }
@@ -344,6 +369,11 @@ export class MockHttp extends HttpService {
           return this.createResponse(url.toString(), 200, 'ok', {});
         else
           return this.createResponse(url.toString(), 500, 'WorkItemLink does not exist: ' + path.extraPath, {});
+      } else if (path.path === '/comments' && path.extraPath) {
+        if (this.mockDataService.deleteComment(path.extraPath))
+          return this.createResponse(url.toString(), 200, 'ok', {});
+        else
+          return this.createResponse(url.toString(), 500, 'Comment does not exist: ' + path.extraPath, {});
       }
     };
 

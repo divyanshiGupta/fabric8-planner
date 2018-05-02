@@ -1,4 +1,14 @@
-import { Component, ViewChild, OnInit, Output, EventEmitter, Input, OnChanges, OnDestroy } from '@angular/core';
+import {
+  Component,
+  ViewChild,
+  OnInit,
+  Output,
+  EventEmitter,
+  Input,
+  OnChanges,
+  OnDestroy,
+  ElementRef
+} from '@angular/core';
 
 import { Observable } from 'rxjs/Observable';
 import { Subscription } from 'rxjs/Subscription';
@@ -28,7 +38,8 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   @ViewChild('createUpdateIterationDialog') createUpdateIterationDialog: any;
   @ViewChild('iterationSearch') iterationSearch: any;
   @ViewChild('iterationList') iterationList: any;
-
+  @ViewChild('itrname') itrname: ElementRef;
+  
   public iteration: IterationModel;
   private validationError = false;
   private modalType: string = 'create';
@@ -123,6 +134,7 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
     let aDayBeforeDate = { date: { year: aDayBefore.format('YYYY'), month: aDayBefore.format('M'), day: aDayBefore.format('D') }} as any;
     endDatePickerComponentCopy['disableUntil'] = aDayBeforeDate.date;
     startDatePickerComponentCopy['componentDisabled'] = false;
+    startDatePickerComponentCopy['disableSince'] = {year: 0, month: 0, day: 0};
     this.startDatePickerOptions = startDatePickerComponentCopy;
     this.endDatePickerOptions = endDatePickerComponentCopy;
     this.validationError = false;
@@ -139,7 +151,6 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   }
 
   ngOnChanges() {
-    console.log(this.modalType);
   }
 
   ngOnDestroy() {
@@ -155,7 +166,7 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
     if(e) {
       e.stopPropagation();
     }
-    console.log('iteration ====', iteration);
+
     this.modalType = type;
     if (iteration) {
       this.iteration = cloneDeep(iteration);
@@ -212,11 +223,12 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
   }
 
   actionOnOpen() {
-    // console.log('Open');
+    setTimeout(() => {
+      this.itrname.nativeElement.focus();
+    }, 200);
   }
 
   actionOnClose() {
-    //console.log('Close');
     this.resetValues();
   }
 
@@ -235,6 +247,9 @@ export class FabPlannerIterationModalComponent implements OnInit, OnDestroy, OnC
     // event properties are: event.date, event.jsdate, event.formatted and event.epoc
     this.endDate = { date: event.date };
     this.iteration.attributes.endAt = moment(event.jsdate).format('YYYY-MM-DD') + 'T12:00:00Z';
+    let startDatePickerComponentCopy = Object.assign({}, this.startDatePickerOptions);
+    startDatePickerComponentCopy['disableSince'] = event.date;
+    this.startDatePickerOptions = startDatePickerComponentCopy;
   }
 
   iterationSearchFocus() {

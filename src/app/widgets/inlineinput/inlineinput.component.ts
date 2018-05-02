@@ -22,12 +22,16 @@ export class InlineInputComponent implements OnInit {
   @ViewChild('input') inputField: ElementRef;
 
   @Input('disabled') readOnly: boolean = false;
-  @Input('value') inpvalue: string = 'Hello World';
-  @Input() placeholder: string = 'This is just a place holder';
+  @Input('value') set input(val) {
+    this.inputValue = val;
+    this.previousValue = val;
+  }
+  @Input() placeholder: string = 'Enter text here';
   @Input() onLineClickEdit: boolean = true;
 
   @Output() onSave = new EventEmitter();
 
+  private inputValue: string = '';
   private saving: boolean = false;
   private editing: boolean = false;
   private previousValue: string = '';
@@ -59,7 +63,7 @@ export class InlineInputComponent implements OnInit {
 
   closeClick() {
     this.errorMessage = '';
-    this.inpvalue = this.previousValue;
+    this.inputValue = this.previousValue;
     this.inputField.nativeElement.value = this.previousValue;
     this.previousValue = '';
     this.editing = false;
@@ -68,11 +72,16 @@ export class InlineInputComponent implements OnInit {
   handleSave(value: string, error: string) {
     this.errorMessage = error;
     this.saving = false;
-    if (this.errorMessage) {
-
-    } else {
+    if (this.errorMessage) {}
+    else {
       this.editing = false;
-      this.inpvalue = value;
+      this.inputValue = value;
     }
+  }
+
+  submitOnEnter(event) {
+    event.preventDefault();
+    this.saveClick();
+    this.inputField.nativeElement.blur();
   }
 }

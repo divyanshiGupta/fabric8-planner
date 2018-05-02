@@ -12,7 +12,7 @@ import { AuthenticationService } from 'ngx-login-client';
 import { Space, Spaces } from 'ngx-fabric8-wit';
 import { Notification, Notifications, NotificationType } from 'ngx-base';
 
-import { IterationModel } from '../models/iteration.model';
+import { IterationModel, IterationUI } from '../models/iteration.model';
 import { MockHttp } from '../mock/mock-http';
 import { HttpService } from './http-service';
 import { WorkItem } from '../models/work-item';
@@ -22,11 +22,12 @@ export class IterationService {
   public iterations: IterationModel[] = [];
   private transformedIterations = [];
   private headers = new Headers({'Content-Type': 'application/json'});
-  private _currentSpace;
+  private _currentSpace: Space;
 
   private selfId;
 
   public dropWIObservable: Subject<{workItem: WorkItem, error: boolean}> = new Subject();
+  public createIterationObservable: Subject<IterationModel> = new Subject();
 
   constructor(
       private logger: Logger,
@@ -67,39 +68,80 @@ export class IterationService {
    * @return Promise of IterationModel[] - Array of iterations.
    */
   getIterations(): Observable<IterationModel[]> {
-    // get the current iteration url from the space service
-    return this.spaces.current.take(1).switchMap(space => {
-      let iterationsUrl = space.relationships.iterations.links.related;
-      return this.http
-        .get(iterationsUrl)
-        .map (response => {
-          if (/^[5, 4][0-9]/.test(response.status.toString())) {
-            throw new Error('API error occured');
-          }
-          return response.json().data as IterationModel[];
-        })
-        .map((data) => {
-          this.iterations = data.map(iteration => {
-            let childIterations = this.checkForChildIterations(iteration, data);
-            if(childIterations.length > 0) {
-              iteration.hasChildren = true;
-              iteration.children = childIterations;
+    if (this.iterations.length > 0 ) {
+      return Observable.of(this.iterations);
+    } else {
+      // get the current iteration url from the space service
+      return this.spaces.current.take(1).switchMap(space => {
+        let iterationsUrl = space.relationships.iterations.links.related;
+        return this.http
+          .get(iterationsUrl)
+          .map (response => {
+            if (/^[5, 4][0-9]/.test(response.status.toString())) {
+              throw new Error('API error occured');
             }
-            return iteration;
-          });
-          return this.iterations;
-        })
-        .catch ((error: Error | any) => {
-          if (error.status === 401) {
-            this.notifyError('You have been logged out.', error);
-            this.auth.logout();
-          } else {
-            console.log('Fetch iteration API returned some error - ', error.message);
-            this.notifyError('Fetching iterations has from server has failed.', error);
+            return response.json().data as IterationModel[];
+          })
+          .map((data) => {
+            this.iterations = data.map(iteration => {
+              let childIterations = this.checkForChildIterations(iteration, data);
+              if(childIterations.length > 0) {
+                iteration.hasChildren = true;
+                iteration.children = childIterations;
+              }
+              return iteration;
+            });
+            return this.iterations;
+          })
+          .catch ((error: Error | any) => {
+            if (error.status === 401) {
+              this.notifyError('You have been logged out.', error);
+              this.auth.logout();
+            } else {
+              console.log('Fetch iteration API returned some error - ', error.message);
+              this.notifyError('Fetching iterations has from server has failed.', error);
+            }
             return Observable.throw(new Error(error.message));
+          });
+      });
+    }
+  }
+
+  /**
+   * getIteration - We call this service method to fetch
+   * @param iterationUrl - The url to get all the iteration
+   * @return Promise of IterationModel[] - Array of iterations.
+   */
+  getIterations2(iterationUrl): Observable<IterationModel[]> {
+    return this.http
+      .get(iterationUrl)
+      .map (response => {
+        if (/^[5, 4][0-9]/.test(response.status.toString())) {
+          throw new Error('API error occured');
+        }
+        return response.json().data as IterationModel[];
+      })
+      .map((data) => {
+        this.iterations = data.map(iteration => {
+          let childIterations = this.checkForChildIterations(iteration, data);
+          if(childIterations.length > 0) {
+            iteration.hasChildren = true;
+            iteration.children = childIterations;
           }
+          return iteration;
         });
-    });
+        return this.iterations;
+      })
+      .catch ((error: Error | any) => {
+        if (error.status === 401) {
+          this.notifyError('You have been logged out.', error);
+          this.auth.logout();
+        } else {
+          console.log('Fetch iteration API returned some error - ', error.message);
+          this.notifyError('Fetching iterations has from server has failed.', error);
+        }
+        return Observable.throw(new Error(error.message));
+      });
   }
 
   /**
@@ -111,6 +153,7 @@ export class IterationService {
   createIteration(iteration: IterationModel, parentIteration: IterationModel): Observable<IterationModel> {
     console.log('Create on iteration service.');
     let iterationsUrl;
+    delete iteration.id;
     if (parentIteration) {
       iterationsUrl = parentIteration.links.self;
     }
@@ -118,7 +161,15 @@ export class IterationService {
       iterationsUrl = this._currentSpace.relationships.iterations.links.related;
     }
     if (this._currentSpace) {
-      iteration.relationships.space.data.id = this._currentSpace.id;
+      iteration.relationships['space'] = {
+        data: {
+          id: this._currentSpace.id,
+          type: 'spaces'
+        },
+        links: {
+          self: this._currentSpace.links.self
+        }
+      };
       return this.http
         .post(
           iterationsUrl,
@@ -169,8 +220,15 @@ export class IterationService {
         // Update existing iteration data
         let index = this.iterations.findIndex(item => item.id === updatedData.id);
         if (index > -1) {
+          //set hasChildren and children information
+          let childIterations = this.checkForChildIterations(updatedData, this.iterations);
+          if(childIterations.length > 0) {
+            updatedData.hasChildren = true;
+            updatedData.children = childIterations;
+          }
           this.iterations[index] = cloneDeep(updatedData);
           return this.iterations[index];
+
         } else {
           this.iterations.splice(0, 0, updatedData);
           return this.iterations[0];
@@ -188,23 +246,20 @@ export class IterationService {
       });
   }
 
-  isRootIteration(iteration: IterationModel): boolean {
-    if (iteration.attributes.parent_path==='/')
-      return true;
-    else
-      return false;
+  isRootIteration(parentPath: string): boolean {
+    return parentPath === '/';
   }
 
   getRootIteration(): Observable<IterationModel> {
     return this.getIterations().first()
     .map((resultIterations) => {
       for (let i=0; i<resultIterations.length; i++) {
-        if (this.isRootIteration(resultIterations[i]))
+        if (this.isRootIteration(resultIterations[i].attributes.parent_path))
           return resultIterations[i];
         }
     })
     .catch( err => {
-      return Observable.empty();
+      return Observable.throw(new Error(err.message));
     });
   }
 
@@ -220,6 +275,20 @@ export class IterationService {
     } else {
       return Observable.of(undefined);
     }
+  }
+
+  getIterationById(iterationId: string): Observable<IterationModel> {
+    return this.getIterations().first()
+      .map((resultIterations) => {
+        for (let i=0; i<resultIterations.length; i++) {
+          if (resultIterations[i].id===iterationId) {
+            return resultIterations[i];
+          }
+        }
+      })
+      .catch( err => {
+        return Observable.throw(new Error(err.message));
+      });
   }
 
   getWorkItemCountInIteration(iteration: any): Observable<number> {
@@ -242,9 +311,26 @@ export class IterationService {
     return children;
   }
 
+  checkForChildIterations2(parent: IterationUI, iterations: IterationUI[]): IterationUI[] {
+    let children = iterations.filter(i => {
+      //check only for direct parent
+      let path_arr = i.parentPath.split('/');
+      let id = path_arr[path_arr.length-1];
+      return (id === parent.id);
+    });
+    return children;
+  }
+
   getTopLevelIterations(iterations): IterationModel[] {
     let topLevelIterations = iterations.filter(iteration =>
       ((iteration.attributes.parent_path.split('/')).length - 1) === 1
+    )
+    return topLevelIterations;
+  }
+
+  getTopLevelIterations2(iterations: IterationUI[]): IterationUI[] {
+    let topLevelIterations = iterations.filter(iteration =>
+      ((iteration.parentPath.split('/')).length - 1) === 1
     )
     return topLevelIterations;
   }
@@ -257,5 +343,14 @@ export class IterationService {
     let path_arr = iteration.attributes.parent_path.split('/');
     let id = path_arr[path_arr.length-1];
     return iterations.find(i => i.id === id);
+  }
+
+  emitCreateIteration(iteration: IterationModel) {
+    this.createIterationObservable.next(iteration);
+  }
+
+  resetIterations() {
+    //Hack on destroy empty iterations array
+    this.iterations = [];
   }
 }

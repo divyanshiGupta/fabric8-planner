@@ -1,6 +1,8 @@
 import { Injectable, Component, Inject } from '@angular/core';
 
 import 'rxjs/add/operator/toPromise';
+import 'rxjs/operators/map';
+import 'rxjs/add/operator/catch';
 import { Subscription } from 'rxjs/Subscription';
 import { Observable } from 'rxjs/Observable';
 import { Subject } from 'rxjs/Subject';
@@ -31,7 +33,8 @@ import { LinkType } from '../models/link-type';
 import { Link } from '../models/link';
 import {
   LinkDict,
-  WorkItem
+  WorkItem,
+  WorkItemService as WIService
 } from '../models/work-item';
 import { WorkItemType } from '../models/work-item-type';
 import { HttpService } from './http-service';
@@ -61,9 +64,11 @@ export class WorkItemService {
 
   private selfId;
 
-  public addWIObservable: Subject<WorkItem> = new Subject();
+  public addWIObservable: Subject<any> = new Subject();
+  public addWIChildObservable: Subject<any> = new Subject();
   public editWIObservable: Subject<WorkItem> = new Subject();
   public selectedWIObservable: Subject<WorkItem> = new Subject();
+  public showTree: Subject<boolean> = new Subject();
 
   constructor(private http: HttpService,
     private broadcaster: Broadcaster,
@@ -111,7 +116,7 @@ export class WorkItemService {
   //   this.logger.log('WorkItemService using url ' + this.workItemUrl);
   // }
 
-  getChildren(parent: WorkItem): Promise<WorkItem[]> {
+  getChildren(parent: WorkItem): Observable<WorkItem[]> {
     // TODO: it looks like the children are not retrieved with paging. This may cause problems in the future.
     if (parent.relationships.children) {
       this.logger.log('Requesting children for work item ' + parent.id);
@@ -135,14 +140,20 @@ export class WorkItemService {
         }).catch((error: Error | any) => {
           this.notifyError('Getting children of work item failed.', error);
           return Observable.throw(new Error(error.message));
-        }).toPromise();
+        });
     } else {
       this.logger.log('Work item does not have child related link, skipping: ' + parent.id);
-      return Observable.of([]).toPromise();
+      return Observable.of([]);
     }
   }
 
-  getWorkItems(pageSize: number = 20, filters: any[] = []): Observable<{workItems: WorkItem[], nextLink: string, totalCount?: number | null}> {
+  getChildren2(url: string): Observable<WIService[]>{
+    return this.http
+        .get(url)
+        .map(response => response.json().data as WIService[]);
+  }
+
+  getWorkItems(pageSize: number = 20, filters: any[] = []): Observable<{workItems: WorkItem[], nextLink: string, totalCount?: number | null, included?: WorkItem[] | null, ancestorIDs?: Array<string> }> {
     if (this._currentSpace) {
       this.workItemUrl = this._currentSpace.links.self + '/workitems';
       let url = this.workItemUrl + '?page[limit]=' + pageSize;
@@ -154,7 +165,9 @@ export class WorkItemService {
           return {
             workItems: resp.json().data as WorkItem[],
             nextLink: resp.json().links.next,
-            totalCount: resp.json().meta ? resp.json().meta.totalCount : 0
+            totalCount: resp.json().meta ? resp.json().meta.totalCount : 0,
+            included: resp.json().included ? resp.json().included as WorkItem[] : [] as WorkItem[],
+            ancestorIDs: resp.json().meta.ancestorIDs ? resp.json().meta.ancestorIDs : [],
           };
         }).catch((error: Error | any) => {
           this.notifyError('Getting work items failed.', error);
@@ -166,16 +179,23 @@ export class WorkItemService {
   }
 
   // TODO Filter temp
-  getWorkItems2(pageSize: number = 20, filters: object): Observable<{workItems: WorkItem[], nextLink: string, totalCount?: number | null}> {
+  getWorkItems2(pageSize: number = 20, filters: object): Observable<{workItems: WorkItem[], nextLink: string, totalCount?: number | null, included?: WorkItem[] | null, ancestorIDs?: Array<string>}> {
     if (this._currentSpace) {
-      this.workItemUrl = this._currentSpace.links.self.split('spaces')[0] + 'search';
-      let url = this.workItemUrl + '?page[limit]=' + pageSize + '&' + Object.keys(filters).map(k => 'filter['+k+']='+JSON.stringify(filters[k])).join('&');
+      let url = '';
+      if (process.env.ENV === 'inmemory') {
+        url = 'http://mock.service/api/spaces/space-id0/workitems?page[limit]=42&filter[space]=space-id0&filter[typegroup.name]=Scenarios';
+      } else {
+        this.workItemUrl = this._currentSpace.links.self.split('spaces')[0] + 'search';
+        url = this.workItemUrl + '?page[limit]=' + pageSize + '&' + Object.keys(filters).map(k => 'filter['+k+']='+JSON.stringify(filters[k])).join('&');
+      }
       return this.http.get(url)
         .map((resp) => {
           return {
             workItems: resp.json().data as WorkItem[],
             nextLink: resp.json().links.next,
-            totalCount: resp.json().meta ? resp.json().meta.totalCount : 0
+            totalCount: resp.json().meta ? resp.json().meta.totalCount : 0,
+            included: resp.json().included ? resp.json().included as WorkItem[] : [],
+            ancestorIDs: resp.json().meta.ancestorIDs ? resp.json().meta.ancestorIDs : [],
           };
         }).catch((error: Error | any) => {
           this.notifyError('Getting work items failed.', error);
@@ -191,13 +211,15 @@ export class WorkItemService {
    * This function is called from next page onwards in the scroll
    * It does pretty much same as the getWorkItems function
    */
-  getMoreWorkItems(url): Observable<{workItems: WorkItem[], nextLink: string | null}> {
+  getMoreWorkItems(url): Observable<{workItems: WorkItem[], nextLink: string | null, included?: WorkItem[] | null, ancestorIDs?: Array<string>}> {
     if (url) {
       return this.http.get(url)
         .map((resp) => {
           return {
             workItems: resp.json().data as WorkItem[],
-            nextLink: resp.json().links.next
+            nextLink: resp.json().links.next,
+            included: resp.json().included ? resp.json().included as WorkItem[] : [],
+            ancestorIDs: resp.json().meta.ancestorIDs ? resp.json().meta.ancestorIDs : [],
           };
         }).catch((error: Error | any) => {
           this.notifyError('Getting more work items failed.', error);
@@ -209,17 +231,15 @@ export class WorkItemService {
   }
 
 
-  resolveWorkItems(workItems, iterations, users, wiTypes): WorkItem[] {
+  resolveWorkItems(workItems, iterations, users, wiTypes, labels, included: WorkItem[] = []): WorkItem[] {
     let resolvedWorkItems = workItems.map((item) => {
-      // put the hasChildren on the root level for the tree
-      if (item.relationships.children && item.relationships.children.meta)
-        item.hasChildren = item.relationships.children.meta.hasChildren;
-
       // Resolve assignnees
-      let assignees = item.relationships.assignees.data ? cloneDeep(item.relationships.assignees.data) : [];
-      item.relationships.assignees.data = assignees.map((assignee) => {
-        return users.find((user) => user.id === assignee.id) || assignee;
-      });
+      if (item.relationships.assignees && item.relationships.assignees.data) {
+        let assignees = item.relationships.assignees.data ? cloneDeep(item.relationships.assignees.data) : [];
+        item.relationships.assignees.data = assignees.map((assignee) => {
+          return users.find((user) => user.id === assignee.id) || assignee;
+        });
+      }
 
       // Resolve creator
       let creator = cloneDeep(item.relationships.creator.data);
@@ -230,6 +250,19 @@ export class WorkItemService {
       if (iteration) {
         item.relationships.iteration.data = iterations.find((it) => it.id === iteration.id) || iteration;
       }
+
+      // Resolve labels
+      let WIlabels = item.relationships.labels.data ? cloneDeep(item.relationships.labels.data) : [];
+      item.relationships.labels.data = WIlabels.map(label => {
+        return labels.find(l => l.id === label.id);
+      })
+
+      // Sort labels in alphabetical order
+      item.relationships.labels.data = item.relationships.labels.data.sort(function(labelA, labelB) {
+        let labelAName = labelA.attributes.name.toUpperCase();
+        let labelBName = labelB.attributes.name.toUpperCase();
+        return labelAName.localeCompare(labelBName);
+      });
 
       // Resolve work item types
       let wiType = cloneDeep(item.relationships.baseType.data);
@@ -270,7 +303,7 @@ export class WorkItemService {
    * @param owner : string
    * @param space : string
    */
-  getWorkItemByNumber(id: string, owner: string = '', space: string = ''): Observable<WorkItem> {
+  getWorkItemByNumber(id: string | number, owner: string = '', space: string = ''): Observable<WorkItem> {
     if (this._currentSpace) {
       if (owner && space) {
         return this.http.get(
@@ -525,10 +558,7 @@ export class WorkItemService {
         .get(url)
         .map(response => {
           return { data: response.json().data, meta: response.json().meta, links: response.json().links};
-        }).catch((error: Error | any) => {
-          this.notifyError('Getting comments failed.', error);
-          return Observable.throw(new Error(error.message));
-        });
+        })
   }
 
   /**
@@ -578,6 +608,25 @@ export class WorkItemService {
     }
   }
 
+  getWorkItemTypes2(workItemTypeUrl): Observable<any[]> {
+    return this.http
+      .get(workItemTypeUrl)
+      .map((response) => {
+        let resultTypes = response.json().data as WorkItemType[];
+
+        // THIS IS A HACK!
+        for (let i=0; i<resultTypes.length; i++)
+          if (resultTypes[i].id==='86af5178-9b41-469b-9096-57e5155c3f31')
+            resultTypes.splice(i, 1);
+
+        this.workItemTypes = resultTypes;
+        return this.workItemTypes;
+      }).catch((error: Error | any) => {
+        this.notifyError('Getting work item type information failed.', error);
+        return Observable.throw(new Error(error.message));
+      });
+  }
+
   /**
    * Usage: This method is to fetch the work item types by ID
    */
@@ -588,7 +637,8 @@ export class WorkItemService {
       if (workItemType) {
         return Observable.of(workItemType);
       } else {
-        let workItemTypeUrl = this._currentSpace.links.self + '/workitemtypes/' + id;
+        let workItemTypeUrl = this._currentSpace.links.self.split('/spaces/')[0] +
+          '/workitemtypes/' + id;
         return this.http.get(workItemTypeUrl)
           .map((response) => {
             workItemType = response.json().data as WorkItemType;
@@ -628,6 +678,7 @@ export class WorkItemService {
               option: item,
             };
           });
+          console.log('availableStates = ', this.availableStates);
           return this.availableStates;
         }).catch((error: Error | any) => {
           this.notifyError('Getting available status options for work item failed.', error);
@@ -686,8 +737,12 @@ export class WorkItemService {
    * and updates the view based on applied filters.
    */
 
-  emitAddWI(workItem: WorkItem) {
-    this.addWIObservable.next(workItem);
+  emitAddWI(workitemDetail) {
+    this.addWIObservable.next(workitemDetail);
+  }
+
+  emitAddWIChild(workitemDetail) {
+    this.addWIChildObservable.next(workitemDetail);
   }
 
   /**
@@ -705,6 +760,13 @@ export class WorkItemService {
    */
   emitSelectedWI(workItem: WorkItem) {
     this.selectedWIObservable.next(workItem);
+  }
+
+  /**
+   * Usage: this method emit a event when showTree is toggled
+   */
+  emitShowTree(showTree: boolean) {
+    this.showTree.next(showTree);
   }
 
   /**
@@ -774,7 +836,7 @@ export class WorkItemService {
    *
    * @return Promise of LinkType[]
    */
-  getAllLinkTypes(workItem: WorkItem): Observable<any> {
+  getAllLinkTypes(): Observable<any> {
     let workItemLinkTypesUrl = this._currentSpace.links.self + '/workitemlinktypes';
     return this.http.get(workItemLinkTypesUrl)
       .catch((error: Error | any) => {
@@ -789,8 +851,8 @@ export class WorkItemService {
    *
    * @return Promise of LinkType[]
    */
-  getLinkTypes(workItem: WorkItem): Observable<Object> {
-    return this.getAllLinkTypes(workItem)
+  getLinkTypes(): Observable<Object> {
+    return this.getAllLinkTypes()
         .map(item => {
           let linkTypes: Object = {};
           linkTypes['forwardLinks'] = item.json().data;
@@ -929,10 +991,9 @@ export class WorkItemService {
    * Resolves and add the new link to the workItem
    *
    * @param link: Link - The new link object for request params
-   * @param currentWiId: string - The work item ID where the link is created
    * @returns Promise<Link>
    */
-  createLink(link: Object, currentWiId: string): Observable<any> {
+  createLink(link: Object): Observable<any> {
     if (this._currentSpace) {
       // FIXME: make the URL great again (when we know the right API URL for this)!
       this.linksUrl = this.baseApiUrl + 'workitemlinks';

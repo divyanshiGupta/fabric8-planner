@@ -1,3 +1,4 @@
+import { EffectsModule } from '@ngrx/effects';
 import './rxjs-extensions';
 
 import { ModuleWithProviders, NgModule } from '@angular/core';
@@ -9,13 +10,15 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 // FIXME: do we really need to have this modules on top-level?
 import { BsDropdownConfig, BsDropdownModule } from 'ngx-bootstrap/dropdown';
 import { TooltipConfig, TooltipModule } from 'ngx-bootstrap/tooltip';
-import { TabsModule } from 'ng2-bootstrap';
+import { TabsModule } from 'ngx-bootstrap';
 import { TruncateModule } from 'ng2-truncate';
 
 import { Broadcaster, Logger, Notifications } from 'ngx-base';
 import { Spaces } from 'ngx-fabric8-wit';
 import { ModalModule } from 'ngx-modal';
 import { AuthenticationService, UserService, HttpService as HttpServiceLGC } from 'ngx-login-client';
+
+import { HeaderModule, FooterModule, HeaderService } from 'osio-ngx-framework';
 
 // Mock data
 import { MockDataService } from 'fabric8-planner';
@@ -40,6 +43,11 @@ import { LoginService } from './services/login.service';
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './app-routing.module';
 
+import {
+  StoreModule
+} from '@ngrx/store';
+import { StoreDevtoolsModule } from '@ngrx/store-devtools';
+
 // conditionally import the inmemory resource module
 let serviceImports: Array<any[] | any | ModuleWithProviders>;
 let providers: any[] = [
@@ -59,6 +67,7 @@ if (process.env.ENV == 'inmemory') {
     MockDataService,
     authApiUrlProvider,
     Notifications,
+    HeaderService,
     {
       provide: Spaces,
       useExisting: SpacesService
@@ -95,6 +104,7 @@ if (process.env.ENV == 'inmemory') {
     MockDataService,
     authApiUrlProvider,
     Notifications,
+    HeaderService,
     {
       provide: Spaces,
       useExisting: SpacesService
@@ -125,7 +135,23 @@ if (process.env.ENV == 'inmemory') {
     ModalModule,
     TabsModule,
     TooltipModule.forRoot(),
-    TruncateModule
+    TruncateModule,
+    HeaderModule,
+    FooterModule,
+    StoreModule.forRoot({}),
+    EffectsModule.forRoot([]),
+    StoreModule.forRoot({}),
+    StoreDevtoolsModule.instrument({
+      maxAge: 25 //  Retains last 25 states
+    }),
+    HeaderModule,
+    FooterModule,
+    StoreModule.forRoot({}),
+    EffectsModule.forRoot([]),
+    StoreModule.forRoot({}),
+    StoreDevtoolsModule.instrument({
+      maxAge: 25 //  Retains last 25 states
+    })
   ],
   declarations: [
     AppComponent,

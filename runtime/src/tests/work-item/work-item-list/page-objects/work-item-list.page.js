@@ -39,27 +39,27 @@ class WorkItemListPage {
       refresh_token: 'somerandomtoken',
       token_type: "bearer"
     }));
-    browser.get("http://localhost:8088/?token_json="+url);
+    browser.get(browser.baseUrl + "/?token_json="+url);
   }
    else {
-     browser.get("http://localhost:8088/");
+     browser.get(browser.baseUrl);
    }
  };
 
  /* Select the space in which the tests will be run */
  get spaceDropdown (){
-   return element(by.css(".ng-valid"));
+   return element(by.css(".recent-items-toggle"));
  }
  clickOnSpaceDropdown (){
    return this.spaceDropdown.click();
  }
  selectSpaceDropDownValue  (index) {
    index++;
-   return element(by.xpath("//select[contains(@class,'ng-valid')]/option[" + index + "]")).click();
+   return element(by.xpath("//ul[contains(@class,'recent-items')]/li[" + index + "]/a")).click();
  }
 
  workItemByURLId (workItemId) {
-   browser.get("http://localhost:8088/work-item/list/detail/"+ workItemId);
+   browser.get(browser.baseUrl + "/work-item/list/detail/"+ workItemId);
     var theDetailPage = new WorkItemDetailPage (workItemId);
  }
  clickCodeMenuTab () {
@@ -84,7 +84,7 @@ class WorkItemListPage {
  }
 
  get userToggle () {
-     return element(by.id("header_dropdownToggle"));
+     return element(by.id("header_dropdownToggle2"));
  }
 
  clickUserToggle () {
@@ -100,15 +100,6 @@ class WorkItemListPage {
  typeQuickAddWorkItemTitle (keys) {
    browser.wait(until.presenceOf(this.workItemQuickAddTitle), constants.WAIT, 'Failed to find workItemQuickAddTitle');
    return this.workItemQuickAddTitle.sendKeys(keys);
- }
-
- get workItemQuickAddDesc () {
-   return element(by.css(".f8-quickadd-desc"));
- }
-
- typeQuickAddWorkItemDesc (keys) {
-   browser.wait(until.presenceOf(this.workItemQuickAddDesc), constants.WAIT, 'Failed to find workItemQuickAddDesc');
-   return this.workItemQuickAddDesc.sendKeys(keys);
  }
 
  /* Access the Kebab element relative to its parent workitem */
@@ -132,7 +123,9 @@ class WorkItemListPage {
  }
 
  clickLogoutButton () {
-   return element(by.linkText('Logout'));
+   element(by.id("header_dropdownToggle2")).click()
+   browser.wait(until.presenceOf(element(by.linkText('Log Out'))), constants.WAIT, 'Failed to find logout option in user dropdown');
+   return element(by.linkText('Log Out'));
  }
 
  signInGithub (gitusername,gitpassword) {
@@ -179,10 +172,11 @@ class WorkItemListPage {
   }
 
   clickIterationById(text){
-    return element(by.id(text)).click();
+    return this.IterationById(text).click();
   }
-  IterationsById(text){
-    return element(by.id(text));
+
+  IterationById(text){
+    return element(by.id('iteration-' + text));
   }
   clickParentIterationDropDown(){
     return this.parentIterationDropDown().click();
@@ -194,12 +188,13 @@ class WorkItemListPage {
   }
 
   selectParentIterationById  (ids){
-    return element(by.id("iteration-id"+ids)).click();
+    return this.parentIterationById(ids).click();
   }
 
   parentIterationById  (ids){
-    return element(by.id("iteration-id"+ids));
+    return element(by.id("iteration-"+ids));
   }
+
   get workItemPopUpDeleteConfirmButton () {
     return element(by.buttonText('Confirm'));
   }
@@ -218,24 +213,16 @@ class WorkItemListPage {
     return this.workItemPopUpDeleteCancelConfirmButton.click();
   }
 
-  get openButton () {
-    return element(by.css(".f8-quickadd__addwi-savebtn"));
-  }
-
   quickAddbuttonById () {
     return element(by.css("f8-quickadd-container"));
   }
 
-  clickWorkItemQuickAdd () {
-    browser.wait(until.presenceOf(this.openButton), constants.WAIT, 'Failed to find the open button');
-    return this.openButton.click();
-  }
-
   get saveButton () {
-    return  element(by.css(".f8-quickadd__wiblk-btn-add"));
+    return  element(by.id("quickadd-save"));
   }
 
   clickQuickAddSave () {
+    browser.wait(until.visibilityOf(this.saveButton), constants.LONGER_WAIT, 'Failed to find the saveButton');
     browser.wait(until.presenceOf(this.saveButton), constants.WAIT, 'Failed to find the saveButton');
     return this.saveButton.click();
   }
@@ -252,35 +239,35 @@ class WorkItemListPage {
   /* Page elements - work item list */
 
   get allWorkItems () {
-    return element.all(by.css(".work-item-list-entry"));
+    return $$("datatable-body-row");
   }
 
-  /* xpath = //alm-work-item-list-entry[.//text()[contains(.,'Some Title 6')]]   */
+  /* This function is used to fetch a workitem based on its "Title"   */
   workItemByTitle (titleString) {
-    // return element(by.xpath("//alm-work-item-list-entry[.//text()[contains(.,'" + titleString + "')]]"));
-    return element(by.xpath("//alm-tree-list-item[.//text()[contains(.,'" + titleString + "')]]"));
+    return element(by.xpath("//datatable-body-row[.//p[contains(text(), '" + titleString + "')]]"));
   }
 
   get firstWorkItem () {
-    return element.all(by.css(".work-item-list-entry")).first();
+    return $$("datatable-body-row").first();
   }
 
   get lastWorkItem () {
-    return element.all(by.css(".work-item-list-entry")).last();
+    return $$("datatable-body-row").last();
   }
 
   /* Title element relative to a workitem */
   workItemTitle (workItemElement) {
-    return workItemElement.element(by.css(".f8-wi__list-title")).element(by.css("p")).getText();
+    return workItemElement.$("p").getText();
   }
 
-  clickWorkItemTitle (workItemElement, idText) {
-    workItemElement.element(by.css(".f8-wi__list-title")).element(by.css("p")).click();
-    var theDetailPage = new WorkItemDetailPage (idText);
-    var until = protractor.ExpectedConditions;
-    //browser.wait(until.presenceOf(theDetailPage.workItemDetailPageTitle), constants.WAIT, 'Detail page title taking too long to appear in the DOM');
-    browser.wait(testSupport.waitForText(theDetailPage.clickWorkItemDetailTitle), constants.WAIT, "Title text is still not present");
-    return theDetailPage;
+  clickWorkItemTitle (title) {
+    this.clickWorkItem(this.workItemByTitle(title))
+    return new WorkItemDetailPage();
+  }
+
+  clickWorkItem(workItemElement) {
+    workItemElement.$("p").click();
+    return new WorkItemDetailPage();
   }
 
   /* Description element relative to a workitem */
@@ -346,6 +333,10 @@ class WorkItemListPage {
     return button.click();
   }
 
+  workItemAttachedLabels(workItem){
+    return workItem.$$('.f8-wi__list-entry span.label');
+  }
+
   /* User assignment dropdown */
   get filterDropdown () {
     return  element(by.id("wi_filter_dropdown"));
@@ -403,8 +394,9 @@ class WorkItemListPage {
   }
 
   get workItemFilterPulldownEdited () {
-    browser.wait(until.presenceOf(element(by.css("span.filter-option.pull-left"))), constants.WAIT, 'Failed to find filter-by dropdown list');
-    return element(by.css("span.filter-option.pull-left"));
+    var xpathStr = ".//input[contains(@type,'text')]";
+    browser.wait(until.presenceOf(element(by.xpath(xpathStr))), constants.WAIT, 'Failed to find filter-by dropdown list');
+    return element(by.xpath(xpathStr));
   }
   clickWorkItemFilterPulldownEdited () {
     return this.workItemFilterPulldownEdited.click();
@@ -608,7 +600,9 @@ class WorkItemListPage {
 
   /* Iterations Page object model */
   clickIterationKebab (index){
-    return element(by.xpath ("(.//button[@class='btn btn-link dropdown-toggle']/i[@class='fa fa-ellipsis-v'])["+ index +"]")).click();
+//    return element(by.xpath("(//div[@class='f8-itr-entry']//button[@class='btn btn-link dropdown-toggle'])["+index+"]")).click();
+    return element(by.xpath(".//*[contains (@id, 'iterationList_OuterWrap_" + index + "')]/..")).click();
+    //   .//*[contains (@id, 'iterationList_OuterWrap_
   }
   clickEditIterationKebab (){
     return element(by.linkText ("Edit")).click();
@@ -618,6 +612,9 @@ class WorkItemListPage {
   }
   clickCloseIterationKebab (){
     return element(by.linkText ("Close")).click();
+  }
+  clickCloseIterationConfirmation() {
+    return element(by.id('create-iteration-button')).click();
   }
   clickChildIterationKebab (){
     return element(by.linkText ("Create child")).click();
@@ -633,29 +630,29 @@ class WorkItemListPage {
     return this.expandCurrentIterationIcon.click();
   }
 
-  get expandFutureIterationIcon () {
-    return element(by.xpath (".//text()[contains(.,'Future Iterations')]/.."));
-  }
+  // get expandFutureIterationIcon () {
+  //   return element(by.xpath (".//text()[contains(.,'Future Iterations')]/.."));
+  // }
 
-  clickExpandFutureIterationIcon () {
-    return this.expandFutureIterationIcon.click();
-  }
+  // clickExpandFutureIterationIcon () {
+  //   return this.expandFutureIterationIcon.click();
+  // }
 
-  get expandPastIterationIcon () {
-    return element(by.xpath (".//text()[contains(.,'Past Iterations')]/.."));
-  }
+  // get expandPastIterationIcon () {
+  //   return element(by.xpath (".//text()[contains(.,'Past Iterations')]/.."));
+  // }
 
-  clickExpandPastIterationIcon () {
-    return this.expandPastIterationIcon.click();
-  }
+  // clickExpandPastIterationIcon () {
+  //   return this.expandPastIterationIcon.click();
+  // }
 
-  get futureIterations () {
-    return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li"));
-  }
+  // get futureIterations () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li"));
+  // }
 
-  get firstFutureIteration () {
-    return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li")).first();
-  }
+  // get firstFutureIteration () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li")).first();
+  // }
 
   getIterationCounter (parentElement) {
     return parentElement.element(by.css(".badge"));
@@ -665,26 +662,39 @@ class WorkItemListPage {
     return element(by.css('.iteration-count')).getText();
   }
 
-
-  get lastFutureIteration () {
-    return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li")).last();
+  IterationByName(name){
+    return element(by.xpath(".//text()[contains(.,'" + name + "')]/../../../.."));
   }
 
-  get pastIterations () {
-    return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul"));
+  ActiveIterationsParent(name) {
+    let child = element(by.css('.active-iterations')).element(by.xpath(".//text()[contains(.,'" + name + "')]/../../.."));
+    return child;
   }
 
-  get firstPastIteration () {
-    return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul/li")).first();
+  IterationsParent(name) {
+    let child = element(by.id('nested-iteration')).element(by.xpath(".//text()[contains(.,'" + name + "')]/../../../.."));
+    return child;
   }
 
-  get lastPastIteration () {
-    return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul/li")).last();
-  }
+  // get lastFutureIteration () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Future Iterations')]/../../../../ul/li")).last();
+  // }
 
-  firstCurrentIteration () {
-    return element.all(by.xpath (".//text()[contains(.,'Current Iterations')]/../../../../../ul/li")).first();
-  }
+  // get pastIterations () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul"));
+  // }
+
+  // get firstPastIteration () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul/li")).first();
+  // }
+
+  // get lastPastIteration () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Past Iterations')]/../../../ul/li")).last();
+  // }
+
+  // firstCurrentIteration () {
+  //   return element.all(by.xpath (".//text()[contains(.,'Current Iterations')]/../../../../../ul/li")).first();
+  // }
 
   clickIterationAddButton () {
     return this.iterationAddButton().click();
@@ -694,19 +704,24 @@ class WorkItemListPage {
     return element(by.css(".f8-itr__add")).click();
   }
 
-  get iterationTitle  (){
-    return element(by.css(".f8-itr-name")).click();
+  get iterationTitleFromList  (){
+    return element(by.css('.f8-itr-name'));
   }
+
+  get iterationTitleFromModal  (){
+    return element(by.id("iteration-name"));
+  }
+
   setIterationTitle  (newTitleString,append){
-    if (!append) { this.iterationTitle.clear(newTitleString) };
-    return this.iterationTitle.sendKeys(newTitleString);
+    if (!append) { this.iterationTitleFromModal.clear(newTitleString) };
+    return this.iterationTitleFromModal.sendKeys(newTitleString);
   }
   get iterationDescription  (){
-    return element(by.id("iteration-description")).click();
+    return element(by.id("iteration-description"));
   }
   setIterationDescription  (newString,append){
-     if (!append) { this.iterationDescription.clear(newString) };
-    return this.iterationDescription.sendKeys(newString);
+     if (!append) { this.iterationDescription.click().clear(newString) };
+    return this.iterationDescription.click().sendKeys(newString);
   }
   get createItreationButton (){
     return element(by.id('create-iteration-button'));
@@ -736,8 +751,12 @@ class WorkItemListPage {
     return element(by.id('iteration-select-dropdown'));
   }
 
+  get forceActiveLabel(){
+    return element(by.css('.f8-active-label'));
+  }
+
   get activeIterationButton () {
-    return  element(by.id("active-switch"));
+    return element(by.css("#active-switch > label"));
   }
 
   clickActiveIterationButton () {
@@ -745,28 +764,131 @@ class WorkItemListPage {
   }
 
   activeIterationButtonStatus (){
-    return this.activeIterationButton.isSelected();
+    return this.activeIterationButton.element(by.css('input')).getAttribute('checked');
   }
 
-  getPortfolio() {
-    return element(by.id('portfolio'));
+
+
+  /* data table Page object model */
+  getdataTableHeaderCell() {
+    return $$('datatable-header-cell');
   }
 
-  clickPortfolio() {
-    return this.getPortfolio().click();
+  getHeaderCellText() {
+    return this.getdataTableHeaderCell().getText();
   }
 
-  getRequirements() {
-    return element(by.id('requirements'));
+  getDataTableHeaderCellCount() {
+    return this.getdataTableHeaderCell().count();
+  }
+
+  getSettingButton() {
+    return $('.f8-wi-list__settings');
+  }
+
+  clickSettingButton() {
+    return this.getSettingButton().click();
+  }
+
+  /* setting dropdown */
+  settingDropdown() {
+    return $('.f8-wi-list__settings-dropdown');
+  }
+
+  getMoveToDisplayAttribute() {
+    return $("span[tooltip='Move to Displayed Attributes']");
+  }
+
+  clickMoveToAvailableAttribute() {
+    return $("span[tooltip='Move to Available Attributes']").click();
+  }
+
+  clickMoveToDisplayAttribute() {
+    return this.getMoveToDisplayAttribute().click();
+  }
+
+  getCancelButton() {
+    return element(By.css('.fa-close.btn'));
+  }
+
+  clickCancelButton() {
+    return this.getCancelButton().click();
+  }
+
+  selectAttributeCheckBox(AttributeValue) {
+    return element(By.xpath("//input[@id= '"+ AttributeValue + "']")).click();
+  }
+
+  /* inline quick-add */
+  clickInlineQuickAdd(titleString) {
+    return element(by.xpath("//datatable-body-row[.//p[contains(text(), '" + titleString + "')]]")).$('.quick-add-icon').click();
+  }
+
+  treeIconDisable(titleString) {
+    return element(by.xpath("//datatable-body-row[.//p[contains(text(), '" + titleString + "')]]")).$('.tree-icon__disabled');
+  }
+
+  inlineQuickAddWorkItem() {
+    return $('#workItemList_quickAdd_inline');
+  }
+
+  typeInlineQuickAddWorkItemTitle(titleString) {
+    return this.inlineQuickAddWorkItem().$('.f8-quickadd-input ').sendKeys(titleString);
+  }
+
+  getInlineQuickAddBtn() {
+    return this.inlineQuickAddWorkItem().$('#quickadd-save');
+  }
+
+  clickInlineQuickAddButton() {
+    this.getInlineQuickAddBtn().click();
+  }
+
+  clickInlineQuickAddandOpenButton() {
+     return this.inlineQuickAddWorkItem().element(By.xpath("//button[text()=' Add and Open ']")).click();
+  }
+
+  clickInlineQuickAddCancel(titleString) {
+    return element(by.xpath("//datatable-body-row[.//p[contains(text(), '" + titleString + "')]]")).$('.pficon-close').click();
+  }
+
+  /* side panel*/
+  getWorkItemGroup() {
+    browser.wait(until.presenceOf(this.getHidePanel()), constants.WAIT, 'Failed to find Hide panel button');
+    return $$('.f8-group-filter');
+  }
+
+  clickScenario() {
+    return this.getWorkItemGroup().get(0).click();
+  }
+
+  clickExperience() {
+    return this.getWorkItemGroup().get(1).click();
   }
 
   clickRequirements() {
-    return this.getRequirements().click();
+    return this.getWorkItemGroup().get(2).click();
   }
 
-  getExecution() {
-    return element(by.id('execution'));
+  getHidePanel() {
+    return $('.f8-sidepanel--toggle-icon');
   }
+
+  clickHidePanelBtn() {
+    return $('.f8-sidepanel--toggle-icon').click();
+  }
+
+  workItemQuickAdd() {
+    return $('#workItemList_up_quickAdd').$$('.dropdown-kebab-pf');
+  }
+
+  clickWorkItemQADropDown() {
+    return this.workItemQuickAdd().click();
+  }
+
+  getWorkItemType() {
+    return $$('#workItemList_up_quickAdd li > a');
+  }
+
 }
-
 module.exports = WorkItemListPage;
